@@ -471,29 +471,68 @@ export class CursorFlowUI {
   }
 
   static createCursor(theme: ThemeOptions): HTMLElement {
+    // Create a container for cursor and label
+    const cursorContainer = document.createElement('div');
+    cursorContainer.className = 'hyphen-cursor-container';
+    cursorContainer.style.cssText = `
+      position: relative;
+      display: flex;
+      align-items: center;
+      pointer-events: none;
+      transform: translate(-5px, -5px);
+    `;
+
+    // Create cursor element
     const cursor = document.createElement('div');
     cursor.className = 'hyphen-cursor';
-    
-    // Load the SVG cursor from external file
     cursor.innerHTML = arrowheadSvg;
-    
-    // Set basic styles for cursor
-    cursor.style.position = 'absolute';
-    cursor.style.zIndex = '9999';
-    cursor.style.pointerEvents = 'none'; // Ensures it doesn't interfere with clicks
-    cursor.style.transform = 'translate(-5px, -5px)'; // Adjust position so tip of cursor is at the target
-    
-    // Apply theme if provided
+    cursor.style.cssText = `
+      position: relative;
+      z-index: 9999;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+    `;
+
+    // Create Craze label
+    const crazeLabel = document.createElement('div');
+    crazeLabel.className = 'hyphen-craze-label';
+    crazeLabel.textContent = 'Craze';
+    crazeLabel.style.cssText = `
+      background-color: ${theme?.buttonColor || '#FF6B00'};
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin-left: -2px;
+      position: relative;
+      z-index: 9998;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 18px;
+      line-height: 1;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    `;
+
+    // Apply theme to cursor if provided
     if (theme?.cursorColor) {
-        const paths = cursor.querySelectorAll('path');
-        paths.forEach(path => {
-            if (path.getAttribute('fill') === '#FF6B00') {
-                path.setAttribute('fill', theme.cursorColor || '#FF6B00');
-            }
-        });
+      const paths = cursor.querySelectorAll('path');
+      paths.forEach(path => {
+        if (path.getAttribute('fill') === '#FF6B00') {
+          path.setAttribute('fill', theme.cursorColor || '#FF6B00');
+        }
+      });
     }
-    
-    return cursor;
+
+    // Assemble the components
+    cursorContainer.appendChild(cursor);
+    cursorContainer.appendChild(crazeLabel);
+
+    return cursorContainer;
   }
 
   static createHighlight(theme: ThemeOptions): HTMLElement {
@@ -552,14 +591,17 @@ export class CursorFlowUI {
       // Create new wrapper only if it doesn't exist
       wrapper = document.createElement('div') as EnhancedHTMLElement;
       wrapper.className = 'hyphen-cursor-wrapper';
-      wrapper.id = 'hyphenbox-cursor-wrapper';  // Updated ID
-      wrapper.style.position = 'absolute';
-      wrapper.style.pointerEvents = 'none';
-      wrapper.style.zIndex = '9999';
-      wrapper.style.top = '0';
-      wrapper.style.left = '0';
-      wrapper.style.width = '100px';
-      wrapper.style.height = '100px';
+      wrapper.id = 'hyphenbox-cursor-wrapper';
+      wrapper.style.cssText = `
+        position: absolute;
+        pointer-events: none;
+        z-index: 9999;
+        top: 0;
+        left: 0;
+        width: 0;  // Will be set dynamically
+        height: 0; // Will be set dynamically
+        display: block; // Changed from flex to block
+      `;
       wrapper.appendChild(cursor);
       document.body.appendChild(wrapper);
     }
@@ -568,48 +610,30 @@ export class CursorFlowUI {
     cursor.style.transition = 'all 0.5s ease';
     cursor.style.position = 'absolute';
     
-    // Use simple positioning - bottom right of element
-    cursor.style.right = '-24px';
-    cursor.style.bottom = '-24px';
+    // Position cursor at bottom right of the element
+    cursor.style.right = '-70px'; // Manual offset from right edge (changed from -24px)
+    cursor.style.bottom = '-32px'; // Manual offset from bottom edge (changed from -24px)
+    cursor.style.transform = 'none'; // Remove transform, use direct positioning
+    cursor.style.margin = '0';
+    cursor.style.padding = '0';
     
-    // Log cursor position for debugging
-    console.log('[CURSOR-DEBUG] Moving cursor to element:', {
-      element: element.outerHTML.substring(0, 100),
-      currentPosition: wrapper.style.transform
-    });
-    
-    // Create a MutationObserver to watch for changes to the element
-    const observer = new MutationObserver(() => {
-      updatePosition();
-    });
-    
-    // Watch for changes to the element's attributes and children
-    observer.observe(element, {
-      attributes: true,
-      childList: true,
-      subtree: true
-    });
-    
-    // Store the observer on the wrapper for later cleanup
-    wrapper['observer'] = observer;
-    
-    // Function to update the wrapper position with smooth animation
+    // Function to update wrapper size and position
     const updatePosition = () => {
       const rect = element.getBoundingClientRect();
       const scrollX = window.scrollX || window.pageXOffset;
       const scrollY = window.scrollY || window.pageYOffset;
       
-      // Add transition to wrapper for smooth sliding
-      wrapper.style.transition = 'transform 0.5s ease';
-      wrapper.style.transform = `translate(${rect.left + scrollX}px, ${rect.top + scrollY}px)`;
+      // Update wrapper size to match element
       wrapper.style.width = `${rect.width}px`;
       wrapper.style.height = `${rect.height}px`;
+      wrapper.style.transform = `translate(${rect.left + scrollX}px, ${rect.top + scrollY}px)`;
       
-      console.log('[CURSOR-DEBUG] Updated wrapper position:', {
-        transform: wrapper.style.transform,
+      console.log('[CURSOR-DEBUG] Updated wrapper:', {
         width: wrapper.style.width,
         height: wrapper.style.height,
-        cursorVisible: window.getComputedStyle(cursor).display !== 'none'
+        transform: wrapper.style.transform,
+        cursorRight: cursor.style.right,
+        cursorBottom: cursor.style.bottom
       });
     };
     
@@ -646,108 +670,63 @@ export class CursorFlowUI {
     const originalText = popup.textContent || '';
     popup.textContent = '';
     
-    // Style the popup - start with transparent until positioned
-    popup.style.position = 'absolute';
-    popup.style.zIndex = '9998';
-    popup.style.backgroundColor = '#ffffff';
-    popup.style.border = '1px solid #e0e0e0';
-    popup.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
-    popup.style.borderRadius = '4px';
-    popup.style.padding = '8px 12px';
-    popup.style.minWidth = '150px';
-    popup.style.maxWidth = '300px';
-    popup.style.width = 'max-content';
-    popup.style.whiteSpace = 'normal';
-    popup.style.wordWrap = 'break-word';
-    popup.style.wordBreak = 'normal';
-    popup.style.opacity = '0';
-    popup.style.transition = 'opacity 0.3s ease';
+    // Style the popup with modern design
+    popup.style.cssText = `
+        position: absolute;
+        z-index: 9998;
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 14px;
+        line-height: 1.4;
+        color: #333333;
+        min-width: 150px;
+        max-width: 300px;
+        width: max-content;
+        white-space: normal;
+        word-wrap: break-word;
+        word-break: normal;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        left: calc(100% + 8px);
+        top: calc(100% + 40px);
+        transform: translateY(-50%);
+    `;
     
-    // Set an initial position (will be checked later)
-    popup.style.left = '100%';
-    popup.style.top = '100%';
-    popup.style.marginLeft = '5px';
-    
-    // First pass: let the browser calculate natural width/height with max-content
+    // First pass: let the browser calculate natural width/height
     const prelimPosition = () => {
       // Get viewport dimensions
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
-      // Get the element's natural size with max-content
+      // Get the element's natural size
       const popupRect = popup.getBoundingClientRect();
-      
-      // Get cursor wrapper position
       const wrapperRect = wrapper.getBoundingClientRect();
       
       // Available space in each direction
-      const spaceRight = viewportWidth - (wrapperRect.right + 5); // 5px margin
-      const spaceLeft = wrapperRect.left - 5;
-      const spaceBottom = viewportHeight - (wrapperRect.bottom + 5);
-      const spaceTop = wrapperRect.top - 5;
+      const spaceRight = viewportWidth - (wrapperRect.right + 8);
+      const spaceLeft = wrapperRect.left - 8;
       
-      // Determine if we need to adjust width based on available space
-      if (popupRect.width > spaceRight) {
-        // Not enough space on right, adjust width OR change position
-        if (spaceRight >= 150) {
-          // At least minimum width available, just constrain to available space
-          popup.style.maxWidth = `${spaceRight - 10}px`; // 10px safety margin
-          popup.style.left = '100%';
-          popup.style.right = 'auto';
-          popup.style.marginLeft = '5px';
-          popup.style.marginRight = '0';
-        } else if (spaceLeft >= 150) {
-          // Try positioning on the left side
-          popup.style.maxWidth = `${spaceLeft - 10}px`; // 10px safety margin
-          popup.style.left = 'auto';
-          popup.style.right = '100%';
-          popup.style.marginLeft = '0';
-          popup.style.marginRight = '5px';
-        } else {
-          // Not enough space on either side, use available space in optimal direction
-          if (spaceRight >= spaceLeft) {
-            popup.style.maxWidth = `${spaceRight - 10}px`;
-            popup.style.left = '100%';
-            popup.style.right = 'auto';
-            popup.style.marginLeft = '5px';
-            popup.style.marginRight = '0';
-          } else {
-            popup.style.maxWidth = `${spaceLeft - 10}px`;
-            popup.style.left = 'auto';
-            popup.style.right = '100%';
-            popup.style.marginLeft = '0';
-            popup.style.marginRight = '5px';
-          }
-        }
+      // If not enough space on right, position to left
+      if (spaceRight < popupRect.width && spaceLeft >= popupRect.width) {
+        popup.style.left = 'auto';
+        popup.style.right = 'calc(100% + 8px)';
       }
       
-      // Check vertical positioning - prioritize bottom positioning
-      if (popupRect.height > spaceBottom) {
-        // Not enough space at the bottom
-        if (spaceTop >= popupRect.height) {
-          // Position on top
+      // Check if popup goes below viewport
+      if (popupRect.bottom > viewportHeight) {
+        const topSpace = wrapperRect.top;
+        if (topSpace >= popupRect.height) {
+          // Position above if there's space
           popup.style.top = 'auto';
-          popup.style.bottom = '100%';
+          popup.style.bottom = '0';
+        } else {
+          // Otherwise, ensure it stays within viewport
+          popup.style.top = `${Math.max(8, viewportHeight - popupRect.height - 8)}px`;
         }
-        // Otherwise leave it at the bottom and accept overflow - better than
-        // potentially hiding the beginning of text if at the top
       }
-      
-      console.log('[TEXT-DEBUG] Positioned popup with available space:', {
-        spaceRight,
-        spaceLeft,
-        spaceBottom,
-        spaceTop,
-        popupWidth: popupRect.width,
-        popupHeight: popupRect.height,
-        finalPosition: {
-          left: popup.style.left,
-          right: popup.style.right,
-          top: popup.style.top,
-          bottom: popup.style.bottom,
-          maxWidth: popup.style.maxWidth
-        }
-      });
     };
     
     // Run preliminary positioning
@@ -763,8 +742,7 @@ export class CursorFlowUI {
         charIndex++;
         setTimeout(streamText, 30);
         
-        // Check if we're at 25%, 50%, or 75% of the content
-        // and recheck boundary only at these points to prevent jittering
+        // Recheck position periodically during text streaming
         if (charIndex === Math.floor(textLength * 0.25) || 
             charIndex === Math.floor(textLength * 0.5) || 
             charIndex === Math.floor(textLength * 0.75)) {
@@ -773,11 +751,9 @@ export class CursorFlowUI {
       }
     };
     
-    // Start the sequence after a short delay to ensure positioning
+    // Start the sequence after a short delay
     setTimeout(() => {
-      // Make popup visible
       popup.style.opacity = '1';
-      // Start streaming text
       streamText();
     }, 500);
   }
