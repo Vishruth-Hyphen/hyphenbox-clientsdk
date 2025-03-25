@@ -674,6 +674,10 @@ export default class CursorFlow {
         return false;
       }
       
+      // NEW: Clean up any existing UI elements before starting new step
+      // Keep cursor since we're about to use it
+      CursorFlowUI.cleanupAllUI(true);
+      
       // Get current step from recording
       let currentStep;
       if (this.recording.steps && this.recording.steps.length > 0) {

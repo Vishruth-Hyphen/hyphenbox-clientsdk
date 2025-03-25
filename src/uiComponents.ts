@@ -516,8 +516,8 @@ export class CursorFlowUI {
 
   static createTextPopup(text: string, theme: ThemeOptions): HTMLElement {
     const popup = document.createElement('div');
-    popup.className = 'hyphen-text-popup';
-    popup.id = 'hyphenbox-text-popup';  // Updated ID
+    popup.className = 'hyphen-text-popup';  // Always add the class
+    popup.id = 'hyphenbox-text-popup';  // Keep the ID too
     popup.textContent = text;
     
     // Basic styling
@@ -538,6 +538,7 @@ export class CursorFlowUI {
     popup.style.wordWrap = 'break-word'; // Break long words if needed
     popup.style.wordBreak = 'normal';    // Use normal word breaking rules
     
+    console.log('[POPUP-DEBUG] Created text popup with ID and class');
     return popup;
   }
 
@@ -1266,6 +1267,8 @@ export class CursorFlowUI {
 
   // Add a new method to properly clean up all UI components
   static cleanupAllUI(keepCursor: boolean = false): void {
+    console.log('[CLEANUP-DEBUG] Starting UI cleanup' + (keepCursor ? ' (keeping cursor)' : ''));
+    
     // Clean up the guidance container and its contents
     const container = document.querySelector('.hyphen-guidance-container') as EnhancedHTMLElement;
     if (container) {
@@ -1314,11 +1317,21 @@ export class CursorFlowUI {
       domAnalyzerContainer.parentNode?.removeChild(domAnalyzerContainer);
     }
     
-    // Clean up text popup by ID
-    const textPopup = document.getElementById('hyphenbox-text-popup');
-    if (textPopup && textPopup.parentNode) {
-      textPopup.parentNode.removeChild(textPopup);
+    // Clean up ALL text popups - both by ID and class
+    const textPopupById = document.getElementById('hyphenbox-text-popup');
+    if (textPopupById && textPopupById.parentNode) {
+      console.log('[CLEANUP-DEBUG] Removing text popup by ID');
+      textPopupById.parentNode.removeChild(textPopupById);
     }
+    
+    // Also clean up by class to catch any that might have been created without ID
+    const textPopupsByClass = document.querySelectorAll('.hyphen-text-popup');
+    textPopupsByClass.forEach(popup => {
+      if (popup.parentNode) {
+        console.log('[CLEANUP-DEBUG] Removing text popup by class');
+        popup.parentNode.removeChild(popup);
+      }
+    });
     
     // Only clean up cursor if explicitly requested
     if (!keepCursor) {
@@ -1376,7 +1389,7 @@ export class CursorFlowUI {
       delete element.dataset.highlightedByDomAnalyzer;
     });
     
-    console.log('UI elements cleaned up', keepCursor ? '(keeping cursor)' : '(including cursor)');
+    console.log('[CLEANUP-DEBUG] UI elements cleanup completed');
   }
 
   /*
