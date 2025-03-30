@@ -720,12 +720,13 @@ export default class CursorFlow {
       }));
       
       console.time('Find target element');
-      // NEW: First initialize the DOM analyzer
-      await DomAnalyzer.initialize(500, this.options.debug); // 500px viewport expansion
-      
-      // NEW: Then use it to find the element
-      this.currentTargetElement = DomAnalyzer.findElement(interaction);
+      this.currentTargetElement = ElementUtils.findElementWithFuzzyLogic(interaction);
       console.timeEnd('Find target element');
+      
+      // Use the original finder as fallback if needed
+      if (!this.currentTargetElement) {
+        this.currentTargetElement = DomAnalyzer.findElement(interaction);
+      }
       
       if (!this.currentTargetElement) {
         console.warn('Target element not found for step:', currentStep);
