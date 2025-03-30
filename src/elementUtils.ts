@@ -373,33 +373,191 @@ export class ElementUtils {
         console.log('[ELEMENT-FINDER] Trying specific Mantine tab search...');
         
         // Check if this might be a tab based on content and tag
-        if (element.tagName === 'BUTTON' && element.textContent) {
+        if ((element.tagName === 'BUTTON' || element.tagName === 'button') && element.textContent) {
           console.log(`[ELEMENT-FINDER] Looking for tab with text: "${element.textContent}"`);
           
+          // Add deeper inspection to debug
+          console.log('[ELEMENT-FINDER] Inspecting all buttons on the page:');
+          const allButtons = document.querySelectorAll('button');
+          
+          console.log(`[ELEMENT-FINDER] Found ${allButtons.length} total buttons on page`);
+          for (let i = 0; i < Math.min(allButtons.length, 20); i++) { // Limit to 20 to avoid huge logs
+            const btn = allButtons[i];
+            console.log(`Button #${i+1}:`, {
+              id: btn.id,
+              text: btn.textContent?.trim(),
+              class: btn.className,
+              hasTabSpan: btn.querySelector('.mantine-Tabs-tabLabel') !== null,
+              tabSpanText: btn.querySelector('.mantine-Tabs-tabLabel')?.textContent?.trim()
+            });
+          }
+          
           for (const {name, root} of searchRoots) {
-            // Look for buttons that have classes indicating they're tabs
-            const potentialTabs = Array.from(
-              root.querySelectorAll('button[class*="mantine-Tabs-tab"]')
-            );
+            // First look specifically for role="tab" elements - this is most reliable for tabs
+            const tabRoleElements = Array.from(root.querySelectorAll('button[role="tab"]'));
+            console.log(`[ELEMENT-FINDER] Found ${tabRoleElements.length} elements with role="tab" in ${name}`);
             
-            if (!potentialTabs.length) {
-              // Fallback to any button if no specific tab classes found
-              potentialTabs.push(...Array.from(root.querySelectorAll('button')));
+            // First try matching the tab identifier part from ID
+            if (element.id && element.id.includes('-tab-')) {
+              const tabIdentifier = element.id.split('-tab-')[1];
+              console.log(`[ELEMENT-FINDER] Looking for tab with identifier "${tabIdentifier}" in role="tab" elements`);
+              
+              const identifierMatches = tabRoleElements.filter(tab => 
+                tab.id && tab.id.includes(`-tab-${tabIdentifier}`)
+              );
+              
+              if (identifierMatches.length > 0) {
+                console.log(`[ELEMENT-FINDER] Found tab with matching identifier part: ${tabIdentifier}`);
+                return identifierMatches[0] as HTMLElement;
+              }
             }
             
-            console.log(`[ELEMENT-FINDER] Found ${potentialTabs.length} potential tabs in ${name}`);
-            
-            // Find tabs with matching text
-            const matchingTabs = potentialTabs.filter(tab => {
-              const tabText = tab.textContent?.trim();
-              return tabText === element.textContent;
+            // Next, look for tab label spans with matching text
+            const matchingTabLabels = tabRoleElements.filter(tab => {
+              // Try to find span with mantine-Tabs-tabLabel class
+              const labelSpan = tab.querySelector('.mantine-Tabs-tabLabel');
+              if (labelSpan) {
+                const spanText = labelSpan.textContent?.trim();
+                return spanText === element.textContent;
+              }
+              // Fallback to direct text comparison if no span
+              return tab.textContent?.trim() === element.textContent;
             });
             
-            console.log(`[ELEMENT-FINDER] Found ${matchingTabs.length} tabs with text "${element.textContent}" in ${name}`);
+            console.log(`[ELEMENT-FINDER] Found ${matchingTabLabels.length} tabs with matching label text "${element.textContent}" in ${name}`);
             
-            if (matchingTabs.length > 0) {
-              return matchingTabs[0] as HTMLElement;
+            if (matchingTabLabels.length > 0) {
+              return matchingTabLabels[0] as HTMLElement;
             }
+            
+            // If no matches with role="tab", try more generic class-based approach
+            const tabClassElements = Array.from(
+              root.querySelectorAll('button[class*="mantine-Tabs-tab"], button[class*="tab"]')
+            );
+            
+            console.log(`[ELEMENT-FINDER] Found ${tabClassElements.length} elements with tab classes in ${name}`);
+            
+            // Check for matching text in tab label spans
+            const matchingClassTabs = tabClassElements.filter(tab => {
+              // Try to find span with label class
+              const labelSpan = tab.querySelector('.mantine-Tabs-tabLabel, span');
+              if (labelSpan) {
+                const spanText = labelSpan.textContent?.trim();
+                return spanText === element.textContent;
+              }
+              // Fallback to direct text comparison
+              return tab.textContent?.trim() === element.textContent;
+            });
+            
+            console.log(`[ELEMENT-FINDER] Found ${matchingClassTabs.length} class-based tabs with matching text in ${name}`);
+            
+            if (matchingClassTabs.length > 0) {
+              return matchingClassTabs[0] as HTMLElement;
+            }
+            
+            // Last resort - just find any button containing the text
+            const allButtons = Array.from(root.querySelectorAll('button'));
+            console.log(`[ELEMENT-FINDER] Searching all ${allButtons.length} buttons as last resort`);
+            
+            const textMatchButtons = allButtons.filter(btn => {
+              // Look for exact match in any child element
+              const hasMatchingChild = Array.from(btn.querySelectorAll('*')).some(child => 
+                child.textContent?.trim() === element.textContent
+              );
+              
+              // Or match button text directly
+              const directMatch = btn.textContent?.trim() === element.textContent;
+              
+              return hasMatchingChild || directMatch;
+            });
+            
+            console.log(`[ELEMENT-FINDER] Found ${textMatchButtons.length} buttons with matching text anywhere inside`);
+            
+            if (textMatchButtons.length > 0) {
+              return textMatchButtons[0] as HTMLElement;
+            }
+          }
+        }
+        
+        // STRATEGY 4.6: Add a deeper DOM search for text matches anywhere in the document if we're looking for Reporting Structure
+        if (element.textContent === "Reporting Structure") {
+          findingDetails.tried.push("Deep Text Search");
+          console.log('[ELEMENT-FINDER] Performing deep text search for "Reporting Structure"');
+          
+          // Find any element containing the exact text
+          const allElements = document.querySelectorAll('*');
+          
+          // First, look for exact matches in spans
+          const exactSpanMatches = Array.from(document.querySelectorAll('span')).filter(
+            span => span.textContent?.trim() === "Reporting Structure"
+          );
+          
+          console.log(`[ELEMENT-FINDER] Found ${exactSpanMatches.length} spans with exact text "Reporting Structure"`);
+          
+          if (exactSpanMatches.length > 0) {
+            // Try to find the closest button parent
+            for (const span of exactSpanMatches) {
+              let parent = span.parentElement;
+              while (parent && parent.tagName !== 'BUTTON') {
+                parent = parent.parentElement;
+              }
+              
+              if (parent && parent.tagName === 'BUTTON') {
+                console.log('[ELEMENT-FINDER] Found button containing matching span:', parent);
+                return parent as HTMLElement;
+              }
+            }
+            
+            // If no button parent, just return the first span
+            console.log('[ELEMENT-FINDER] No button parent found, returning span itself');
+            return exactSpanMatches[0] as HTMLElement;
+          }
+          
+          // Last ditch effort - find any element with matching text
+          const allTextMatches = Array.from(allElements).filter(
+            el => el.textContent?.trim() === "Reporting Structure"
+          );
+          
+          console.log(`[ELEMENT-FINDER] Found ${allTextMatches.length} elements with exact text "Reporting Structure"`);
+          
+          if (allTextMatches.length > 0) {
+            // Log detailed info about these elements
+            allTextMatches.forEach((el, i) => {
+              console.log(`Text match #${i+1}:`, {
+                tagName: el.tagName,
+                id: el.id,
+                classes: el.className,
+                parentTag: el.parentElement?.tagName,
+                isInteractive: el.tagName === 'BUTTON' || el.tagName === 'A'
+              });
+            });
+            
+            // Prefer interactive elements
+            const interactiveMatches = allTextMatches.filter(el => 
+              el.tagName === 'BUTTON' || el.tagName === 'A'
+            );
+            
+            if (interactiveMatches.length > 0) {
+              return interactiveMatches[0] as HTMLElement;
+            }
+            
+            // Try to find closest interactive parent
+            for (const el of allTextMatches) {
+              let parent = el.parentElement;
+              let depth = 0;
+              const MAX_DEPTH = 3; // Don't go too far up the tree
+              
+              while (parent && depth < MAX_DEPTH) {
+                if (parent.tagName === 'BUTTON' || parent.tagName === 'A') {
+                  return parent as HTMLElement;
+                }
+                parent = parent.parentElement;
+                depth++;
+              }
+            }
+            
+            // Return first match if no interactive element found
+            return allTextMatches[0] as HTMLElement;
           }
         }
         
