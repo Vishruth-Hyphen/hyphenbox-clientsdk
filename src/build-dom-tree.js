@@ -1049,6 +1049,19 @@
       }
     }
   
+    console.log('Current sidebar elements:', document.querySelectorAll('[class*="sidebar"] a, nav a').length);
+    console.log('Elements containing "My Profile":', 
+      Array.from(document.querySelectorAll('*')).filter(el => 
+        el.textContent && el.textContent.includes('My Profile')
+      ).map(el => ({
+        tagName: el.tagName,
+        id: el.id,
+        className: el.className,
+        text: el.textContent.trim(),
+        path: getXPathForElement(el)
+      }))
+    );
+  
     return debugMode ?
       { rootId, map: DOM_HASH_MAP, perfMetrics: PERF_METRICS } :
       { rootId, map: DOM_HASH_MAP };

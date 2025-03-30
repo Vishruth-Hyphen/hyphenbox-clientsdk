@@ -22,22 +22,16 @@ export default class CursorFlow {
     private sortedSteps: any[] = [];
     private isHandlingNavigation = false;
     private usingDirectHighlight = true;
-    private thinkingIndicator: HTMLElement | null = null;
   
     constructor(options: CursorFlowOptions) {
       // Initialize with default options
-      console.log('[CURSOR-FLOW-DEBUG] Initializing with options:', options);
-      console.log('[CURSOR-FLOW-DEBUG] Original buttonText:', options.buttonText);
-      
       this.options = {
         ...options,
         theme: options.theme || {},
-        buttonText: 'Co-pilot',
-        guidesButtonText: options.guidesButtonText || 'Select Guide',
+        buttonText: options.buttonText || 'Hyphenbox Co-pilot',
+        guidesButtonText: options.guidesButtonText || 'What can I show you?',
         debug: options.debug || false
       };
-      
-      console.log('[CURSOR-FLOW-DEBUG] Final options after defaults:', this.options);
       
       // Create API client
       this.apiClient = new ApiClient(this.options.apiUrl, this.options.organizationId);
@@ -59,7 +53,7 @@ export default class CursorFlow {
         console.log('CursorFlow initialized with options:', this.options);
       }
     }
-  
+      
     async init(): Promise<boolean> {
       try {
         // Check if API is accessible
@@ -141,9 +135,6 @@ export default class CursorFlow {
     }
     
     private createStartButton() {
-      console.log('[CURSOR-FLOW-DEBUG] Creating start button');
-      console.log('[CURSOR-FLOW-DEBUG] Current buttonText:', this.options.buttonText);
-      
       if (!this.startButton) {
         this.startButton = CursorFlowUI.createStartButton(
           this.options.buttonText || 'Guides',
@@ -154,7 +145,7 @@ export default class CursorFlow {
         document.body.appendChild(this.startButton);
         
         if (this.options.debug) {
-          console.log('[CURSOR-FLOW-DEBUG] Start button created and appended to body');
+          console.log('Start button created');
         }
       }
       
@@ -173,29 +164,13 @@ export default class CursorFlow {
     }
   
     private updateButtonState() {
-      console.log('[CURSOR-FLOW-DEBUG] Updating button state');
-      console.log('[CURSOR-FLOW-DEBUG] Current state:', { isPlaying: this.state.isPlaying });
-      
-      if (!this.startButton) {
-        console.warn('[CURSOR-FLOW-DEBUG] No start button found to update');
-        return;
-      }
+      if (!this.startButton) return;
       
       if (this.state.isPlaying) {
-        console.log('[CURSOR-FLOW-DEBUG] Setting button to "Stop Guide"');
-        // Update only the text span while preserving the SVG
-        const textSpan = this.startButton.querySelector('.hyphen-text');
-        if (textSpan) {
-          textSpan.textContent = 'Stop Guide';
-        }
+        this.startButton.textContent = 'Stop Guide';
         this.startButton.classList.add('hyphen-playing');
       } else {
-        console.log('[CURSOR-FLOW-DEBUG] Setting button to:', this.options.buttonText || 'Guides');
-        // Update only the text span while preserving the SVG
-        const textSpan = this.startButton.querySelector('.hyphen-text');
-        if (textSpan) {
-          textSpan.textContent = this.options.buttonText || 'Guides';
-        }
+        this.startButton.textContent = this.options.buttonText || 'Guides';
         this.startButton.classList.remove('hyphen-playing');
       }
     }
@@ -227,12 +202,6 @@ export default class CursorFlow {
         this.startButton,
         (guideData) => {
           console.log('Selected guide:', guideData);
-          
-          // Show thinking indicator as soon as guide is selected
-          if (this.startButton) {
-            this.thinkingIndicator = CursorFlowUI.showThinkingIndicator(this.startButton);
-          }
-          
           // For now just retrieve and log the recording data
           this.retrieveGuideData(guideData.id);
         }
@@ -308,16 +277,10 @@ export default class CursorFlow {
             currentPath: window.location.pathname
           });
           
-          // Hide thinking indicator if we're showing a notification
+          // Proceed only if URLs match
           if (hasUrlToCheck && !isUrlMatch && !isPathMatch) {
             // User is not on the correct starting page
             console.log('URL CHECK FAILED: User is not on the correct starting page for the guide');
-            
-            // Hide thinking indicator before showing notification
-            if (this.thinkingIndicator) {
-              CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-              this.thinkingIndicator = null;
-            }
             
             if (redirectUrl) {
               // Show notification with redirect option
@@ -346,19 +309,6 @@ export default class CursorFlow {
         await this.startGuide(guideId);
       } catch (error) {
         console.error('Failed to retrieve guide data:', error);
-        
-        // Hide thinking indicator on error
-        if (this.thinkingIndicator) {
-          CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-          this.thinkingIndicator = null;
-        }
-        
-        // Show error notification
-        CursorFlowUI.showNotification({
-          message: 'Failed to load guide. Please try again.',
-          type: 'error',
-          autoClose: 5000
-        });
       }
     }
   
@@ -459,26 +409,12 @@ export default class CursorFlow {
     }
   
     stop() {
-      // Hide thinking indicator when stopping the guide
-      if (this.thinkingIndicator) {
-        CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-        this.thinkingIndicator = null;
-      }
-      
       if (this.options.debug) {
         console.log('Stopping guide');
       }
       
-      // First clear DomAnalyzer highlights
-      try {
-        DomAnalyzer.clearHighlights();
-        console.log('[HIGHLIGHT-DEBUG] DomAnalyzer highlights cleared');
-      } catch (e) {
-        console.error('[HIGHLIGHT-DEBUG] Failed to clear DomAnalyzer highlights:', e);
-      }
-      
-      // Then remove visual elements - pass false to ensure cursor is also cleaned up
-      CursorFlowUI.cleanupAllUI(false);
+      // Remove visual elements
+      this.hideVisualElements();
       
       // Reset state
       this.state = {
@@ -499,11 +435,6 @@ export default class CursorFlow {
       
       // Update button state
       this.updateButtonState();
-      
-      // Reset all element references
-      this.cursorElement = null;
-      this.highlightElement = null;
-      this.currentTargetElement = null;
       
       if (this.options.debug) {
         console.log('Guide stopped, state reset');
@@ -663,20 +594,10 @@ export default class CursorFlow {
     }
     
     private async playCurrentStep() {
-      // Hide thinking indicator when starting to play a step
-      if (this.thinkingIndicator) {
-        CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-        this.thinkingIndicator = null;
-      }
-      
       if (!this.recording || !this.state.isPlaying) {
         console.warn('No active recording or not in playing state');
         return false;
       }
-      
-      // NEW: Clean up any existing UI elements before starting new step
-      // Keep cursor since we're about to use it
-      CursorFlowUI.cleanupAllUI(true);
       
       // Get current step from recording
       let currentStep;
@@ -742,8 +663,60 @@ export default class CursorFlow {
       
       // NEW: Then use it to find the element
       this.currentTargetElement = DomAnalyzer.findElement(interaction);
-      console.timeEnd('Find target element');
-      
+
+      // Add fallback element detection if DomAnalyzer failed
+      if (!this.currentTargetElement) {
+        console.log('Primary detection failed, trying fallback methods');
+        
+        // Try multiple fallback selectors for common navigation items
+        const selectors = [
+          `a[href*="profile"]:contains("${interaction.text}")`,
+          `a:contains("${interaction.text}")`,
+          `a[href*="profile"]`,
+          `.sidebar a:contains("${interaction.text}")`,
+          `nav a:contains("${interaction.text}")`,
+          // More specific selector for sidebar navigation
+          `[class*="sidebar"] a, [class*="nav"] a, [class*="menu"] a`
+        ];
+        
+        for (const selector of selectors) {
+          try {
+            console.log(`Trying fallback selector: ${selector}`);
+            const elements = document.querySelectorAll(selector);
+            for (const el of elements) {
+              if (el.textContent?.includes(interaction.text)) {
+                console.log(`Found element with text "${interaction.text}" using fallback selector`);
+                this.currentTargetElement = el;
+                break;
+              }
+            }
+            if (this.currentTargetElement) break;
+          } catch (e) {
+            console.warn(`Error with selector ${selector}:`, e);
+          }
+        }
+        
+        // Last resort: Try finding by XPath with text
+        if (!this.currentTargetElement) {
+          try {
+            const xpathResult = document.evaluate(
+              `//*[contains(text(),"${interaction.text}")]`,
+              document,
+              null,
+              XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+              null
+            );
+            
+            if (xpathResult.snapshotLength > 0) {
+              this.currentTargetElement = xpathResult.snapshotItem(0);
+              console.log('Found element using XPath text search');
+            }
+          } catch (e) {
+            console.warn('XPath fallback failed:', e);
+          }
+        }
+      }
+
       if (!this.currentTargetElement) {
         console.warn('Target element not found for step:', currentStep);
         
@@ -809,9 +782,6 @@ export default class CursorFlow {
         console.error('[HIGHLIGHT-DEBUG] DomAnalyzer failed:', e);
       }
       
-      // Add detailed cursor positioning flow log
-      console.log('[CURSOR-FLOW-DEBUG] About to position cursor - this will call CursorFlowUI.moveCursorToElement(), NOT showGuidanceElements()');
-      
       console.log('[HIGHLIGHT-DEBUG] Using CursorFlowUI for cursor positioning');
       // Continue using CursorFlowUI for cursor movement and text popup
       CursorFlowUI.moveCursorToElement(
@@ -843,10 +813,11 @@ export default class CursorFlow {
       }
       
       console.log('[HIGHLIGHT-DEBUG] Using CursorFlowUI.cleanupAllUI() to clean up UI elements');
-      // Clean up UI elements but keep the cursor
-      CursorFlowUI.cleanupAllUI(true);
+      // Continue to use CursorFlowUI.cleanupAllUI for other elements
+      CursorFlowUI.cleanupAllUI();
       
       // Reset references
+      this.cursorElement = null;
       this.highlightElement = null;
       
       console.log('[HIGHLIGHT-DEBUG] Visual elements hidden and references cleared');
@@ -1322,8 +1293,8 @@ export default class CursorFlow {
     private async playNextStep() {
       if (!this.state.isPlaying) return false;
       
-      // Hide current visual elements first, but keep the cursor
-      CursorFlowUI.cleanupAllUI(true);
+      // Hide current visual elements first
+      this.hideVisualElements();
       
       // Remove existing listeners
       this.removeExistingListeners();
