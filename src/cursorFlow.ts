@@ -663,60 +663,8 @@ export default class CursorFlow {
       
       // NEW: Then use it to find the element
       this.currentTargetElement = DomAnalyzer.findElement(interaction);
-
-      // Add fallback element detection if DomAnalyzer failed
-      if (!this.currentTargetElement) {
-        console.log('Primary detection failed, trying fallback methods');
-        
-        // Try multiple fallback selectors for common navigation items
-        const selectors = [
-          `a[href*="profile"]:contains("${interaction.text}")`,
-          `a:contains("${interaction.text}")`,
-          `a[href*="profile"]`,
-          `.sidebar a:contains("${interaction.text}")`,
-          `nav a:contains("${interaction.text}")`,
-          // More specific selector for sidebar navigation
-          `[class*="sidebar"] a, [class*="nav"] a, [class*="menu"] a`
-        ];
-        
-        for (const selector of selectors) {
-          try {
-            console.log(`Trying fallback selector: ${selector}`);
-            const elements = document.querySelectorAll(selector);
-            for (const el of elements) {
-              if (el.textContent?.includes(interaction.text)) {
-                console.log(`Found element with text "${interaction.text}" using fallback selector`);
-                this.currentTargetElement = el;
-                break;
-              }
-            }
-            if (this.currentTargetElement) break;
-          } catch (e) {
-            console.warn(`Error with selector ${selector}:`, e);
-          }
-        }
-        
-        // Last resort: Try finding by XPath with text
-        if (!this.currentTargetElement) {
-          try {
-            const xpathResult = document.evaluate(
-              `//*[contains(text(),"${interaction.text}")]`,
-              document,
-              null,
-              XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
-              null
-            );
-            
-            if (xpathResult.snapshotLength > 0) {
-              this.currentTargetElement = xpathResult.snapshotItem(0);
-              console.log('Found element using XPath text search');
-            }
-          } catch (e) {
-            console.warn('XPath fallback failed:', e);
-          }
-        }
-      }
-
+      console.timeEnd('Find target element');
+      
       if (!this.currentTargetElement) {
         console.warn('Target element not found for step:', currentStep);
         

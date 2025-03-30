@@ -56,35 +56,68 @@ export class ElementUtils {
         if (element.cssSelector) {
           findingDetails.tried.push("CSS Selector");
           
-          // Try CSS selector in each search root
-          for (const {name, root} of searchRoots) {
-            console.log(`[ELEMENT-FINDER] Trying CSS selector "${element.cssSelector}" in ${name}...`);
+          // NEW: Check if the selector uses :contains() pseudo-class
+          const containsMatch = element.cssSelector.match(/^([a-z0-9_\-\[\]\.#]+):contains\("([^"]+)"\)$/i);
+          if (containsMatch) {
+            const baseSelector = containsMatch[1]; // e.g., "a"
+            const searchText = containsMatch[2];   // e.g., "My Profile"
             
-            try {
-              const elements = root.querySelectorAll(element.cssSelector);
-              console.log(`[ELEMENT-FINDER] Found ${elements.length} matches in ${name}`);
+            console.log(`[ELEMENT-FINDER] Detected :contains() selector. Using custom text search for "${searchText}" within "${baseSelector}" elements`);
+            
+            // Try text search in each search root
+            for (const {name, root} of searchRoots) {
+              console.log(`[ELEMENT-FINDER] Trying text search "${searchText}" in ${baseSelector} elements in ${name}...`);
               
-              if (elements.length > 0) {
-                // Check text content if specified
-                for (let i = 0; i < elements.length; i++) {
-                  const el = elements[i] as HTMLElement;
-                  const match = !element.textContent || el.textContent?.trim() === element.textContent.trim();
-                  
-                  console.log(`[ELEMENT-FINDER] Match #${i+1}: textMatch=${match}, element:`, {
-                    id: el.id,
-                    className: el.className,
-                    textContent: el.textContent?.substring(0, 30),
-                    visible: el.offsetParent !== null,
-                    rect: el.getBoundingClientRect()
-                  });
-                  
-                  if (match) {
-                    return el;
+              try {
+                // Get all elements matching the base selector
+                const elements = Array.from(root.querySelectorAll(baseSelector));
+                console.log(`[ELEMENT-FINDER] Found ${elements.length} ${baseSelector} elements in ${name}`);
+                
+                // Filter for elements containing the specified text
+                const matchingElements = elements.filter(el => {
+                  return el.textContent?.trim() === searchText.trim();
+                });
+                
+                console.log(`[ELEMENT-FINDER] Found ${matchingElements.length} text matches in ${name}`);
+                
+                if (matchingElements.length > 0) {
+                  return matchingElements[0] as HTMLElement;
+                }
+              } catch (e) {
+                console.log(`[ELEMENT-FINDER] Error with text search in ${name}:`, e);
+              }
+            }
+          } else {
+            // Try normal CSS selector in each search root
+            for (const {name, root} of searchRoots) {
+              console.log(`[ELEMENT-FINDER] Trying CSS selector "${element.cssSelector}" in ${name}...`);
+              
+              try {
+                const elements = root.querySelectorAll(element.cssSelector);
+                console.log(`[ELEMENT-FINDER] Found ${elements.length} matches in ${name}`);
+                
+                if (elements.length > 0) {
+                  // Check text content if specified
+                  for (let i = 0; i < elements.length; i++) {
+                    const el = elements[i] as HTMLElement;
+                    const match = !element.textContent || el.textContent?.trim() === element.textContent.trim();
+                    
+                    console.log(`[ELEMENT-FINDER] Match #${i+1}: textMatch=${match}, element:`, {
+                      id: el.id,
+                      className: el.className,
+                      textContent: el.textContent?.substring(0, 30),
+                      visible: el.offsetParent !== null,
+                      rect: el.getBoundingClientRect()
+                    });
+                    
+                    if (match) {
+                      return el;
+                    }
                   }
                 }
+              } catch (e) {
+                console.log(`[ELEMENT-FINDER] Error with selector in ${name}:`, e);
               }
-            } catch (e) {
-              console.log(`[ELEMENT-FINDER] Error with selector in ${name}:`, e);
             }
           }
         }
