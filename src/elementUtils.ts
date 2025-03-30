@@ -56,35 +56,105 @@ export class ElementUtils {
         if (element.cssSelector) {
           findingDetails.tried.push("CSS Selector");
           
-          // Try CSS selector in each search root
-          for (const {name, root} of searchRoots) {
-            console.log(`[ELEMENT-FINDER] Trying CSS selector "${element.cssSelector}" in ${name}...`);
+          // Check if it contains the non-standard :contains() pseudo-selector
+          if (element.cssSelector.includes(':contains(')) {
+            console.log('[ELEMENT-FINDER] Detected :contains() pseudo-selector, using alternative strategy');
             
-            try {
-              const elements = root.querySelectorAll(element.cssSelector);
-              console.log(`[ELEMENT-FINDER] Found ${elements.length} matches in ${name}`);
+            // Extract the tag name and text from the selector
+            // Pattern: tagName:contains("text")
+            const match = element.cssSelector.match(/([a-zA-Z0-9]+):contains\(["'](.+?)["']\)/);
+            if (match) {
+              const [_, tagName, text] = match;
+              console.log(`[ELEMENT-FINDER] Parsed selector: tag=${tagName}, text="${text}"`);
               
-              if (elements.length > 0) {
-                // Check text content if specified
-                for (let i = 0; i < elements.length; i++) {
-                  const el = elements[i] as HTMLElement;
-                  const match = !element.textContent || el.textContent?.trim() === element.textContent.trim();
-                  
-                  console.log(`[ELEMENT-FINDER] Match #${i+1}: textMatch=${match}, element:`, {
-                    id: el.id,
-                    className: el.className,
-                    textContent: el.textContent?.substring(0, 30),
-                    visible: el.offsetParent !== null,
-                    rect: el.getBoundingClientRect()
+              // Search for elements by tag name and text content
+              for (const {name, root} of searchRoots) {
+                console.log(`[ELEMENT-FINDER] Searching for ${tagName} with text "${text}" in ${name}...`);
+                
+                try {
+                  const elements = Array.from(root.querySelectorAll(tagName));
+                  const matchingElements = elements.filter(el => {
+                    const elText = el.textContent?.trim();
+                    return elText === text;
                   });
                   
-                  if (match) {
-                    return el;
+                  console.log(`[ELEMENT-FINDER] Found ${matchingElements.length} elements with matching text in ${name}`);
+                  
+                  if (matchingElements.length > 0) {
+                    return matchingElements[0] as HTMLElement;
                   }
+                } catch (e) {
+                  console.log(`[ELEMENT-FINDER] Error searching in ${name}:`, e);
                 }
               }
+            }
+          } else {
+            // Try CSS selector in each search root
+            for (const {name, root} of searchRoots) {
+              console.log(`[ELEMENT-FINDER] Trying CSS selector "${element.cssSelector}" in ${name}...`);
+              
+              try {
+                const elements = root.querySelectorAll(element.cssSelector);
+                console.log(`[ELEMENT-FINDER] Found ${elements.length} matches in ${name}`);
+                
+                if (elements.length > 0) {
+                  // Check text content if specified
+                  for (let i = 0; i < elements.length; i++) {
+                    const el = elements[i] as HTMLElement;
+                    const match = !element.textContent || el.textContent?.trim() === element.textContent.trim();
+                    
+                    console.log(`[ELEMENT-FINDER] Match #${i+1}: textMatch=${match}, element:`, {
+                      id: el.id,
+                      className: el.className,
+                      textContent: el.textContent?.substring(0, 30),
+                      visible: el.offsetParent !== null,
+                      rect: el.getBoundingClientRect()
+                    });
+                    
+                    if (match) {
+                      return el;
+                    }
+                  }
+                }
+              } catch (e) {
+                console.log(`[ELEMENT-FINDER] Error with selector in ${name}:`, e);
+              }
+            }
+          }
+        }
+        
+        // STRATEGY 1.5: Text content matching if available
+        if (element.textContent || interaction.text) {
+          findingDetails.tried.push("Text Content");
+          const textToMatch = element.textContent || interaction.text;
+          const tagName = element.tagName || '';
+          
+          console.log(`[ELEMENT-FINDER] Trying to find element by text: "${textToMatch}" with tag: "${tagName}"`);
+          
+          for (const {name, root} of searchRoots) {
+            try {
+              // If tagName is specified, filter by it
+              const selector = tagName ? tagName : '*';
+              const elements = Array.from(root.querySelectorAll(selector));
+              const matchingElements = elements.filter(el => {
+                // Skip script, style tags and hidden elements
+                if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || 
+                    (el as HTMLElement).style.display === 'none' || 
+                    (el as HTMLElement).style.visibility === 'hidden') {
+                  return false;
+                }
+                
+                const elText = el.textContent?.trim();
+                return elText === textToMatch;
+              });
+              
+              console.log(`[ELEMENT-FINDER] Found ${matchingElements.length} elements with text "${textToMatch}" in ${name}`);
+              
+              if (matchingElements.length > 0) {
+                return matchingElements[0] as HTMLElement;
+              }
             } catch (e) {
-              console.log(`[ELEMENT-FINDER] Error with selector in ${name}:`, e);
+              console.log(`[ELEMENT-FINDER] Error searching text in ${name}:`, e);
             }
           }
         }
@@ -234,6 +304,26 @@ export class ElementUtils {
           console.log('[ELEMENT-FINDER] Portal DOM structure preview:');
           portals.forEach((portal, i) => {
             console.log(`Portal ${i+1} HTML:`, portal.innerHTML.substring(0, 500) + '...');
+          });
+        }
+        
+        // EXTRA DIAGNOSTIC: Try to find all "My Profile" texts anywhere in the document
+        if (element.textContent === "My Profile" || interaction.text === "My Profile") {
+          console.log('[ELEMENT-FINDER] Extra diagnostic - searching for any "My Profile" text in document:');
+          const allElements = document.querySelectorAll('*');
+          const potentialMatches = Array.from(allElements).filter(el => 
+            el.textContent?.trim() === "My Profile"
+          );
+          
+          console.log(`[ELEMENT-FINDER] Found ${potentialMatches.length} potential "My Profile" matches:`);
+          potentialMatches.forEach((el, i) => {
+            console.log(`Match #${i+1}:`, {
+              tagName: el.tagName,
+              id: el.id,
+              className: el.className,
+              path: this.getElementPath(el as HTMLElement),
+              visible: (el as HTMLElement).offsetParent !== null
+            });
           });
         }
         
@@ -604,5 +694,32 @@ export class ElementUtils {
       const elementText = element.textContent?.trim() || '';
       const searchText = targetText.trim();
       return elementText === searchText;
+    }
+  
+    // Helper function to get element path
+    static getElementPath(element: HTMLElement): string {
+      if (!element) return '';
+      
+      let path = '';
+      let currentElement: HTMLElement | null = element;
+      
+      while (currentElement && currentElement !== document.body) {
+        let selector = currentElement.tagName.toLowerCase();
+        
+        if (currentElement.id) {
+          selector += `#${currentElement.id}`;
+        } else if (currentElement.className) {
+          const classes = currentElement.className.split(' ')
+            .filter(c => c)
+            .map(c => `.${c}`)
+            .join('');
+          selector += classes;
+        }
+        
+        path = path ? `${selector} > ${path}` : selector;
+        currentElement = currentElement.parentElement;
+      }
+      
+      return path;
     }
 }
