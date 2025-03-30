@@ -136,7 +136,9 @@ export class ElementUtils {
               // If tagName is specified, filter by it
               const selector = tagName ? tagName : '*';
               const elements = Array.from(root.querySelectorAll(selector));
-              const matchingElements = elements.filter(el => {
+              
+              // First try exact text matching
+              const exactMatches = elements.filter(el => {
                 // Skip script, style tags and hidden elements
                 if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || 
                     (el as HTMLElement).style.display === 'none' || 
@@ -148,10 +150,39 @@ export class ElementUtils {
                 return elText === textToMatch;
               });
               
-              console.log(`[ELEMENT-FINDER] Found ${matchingElements.length} elements with text "${textToMatch}" in ${name}`);
+              console.log(`[ELEMENT-FINDER] Found ${exactMatches.length} elements with exact text "${textToMatch}" in ${name}`);
               
-              if (matchingElements.length > 0) {
-                return matchingElements[0] as HTMLElement;
+              if (exactMatches.length > 0) {
+                return exactMatches[0] as HTMLElement;
+              }
+              
+              // If no exact matches, try looking for elements that contain the text
+              const containsMatches = elements.filter(el => {
+                // Skip script, style tags and hidden elements
+                if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || 
+                    (el as HTMLElement).style.display === 'none' || 
+                    (el as HTMLElement).style.visibility === 'hidden') {
+                  return false;
+                }
+                
+                const elText = el.textContent?.trim();
+                return elText?.includes(textToMatch) || false;
+              });
+              
+              console.log(`[ELEMENT-FINDER] Found ${containsMatches.length} elements containing text "${textToMatch}" in ${name}`);
+              
+              if (containsMatches.length > 0) {
+                // For buttons and links, prioritize interactive elements that contain the exact text
+                const interactiveMatches = containsMatches.filter(el => 
+                  (el.tagName === 'BUTTON' || el.tagName === 'A') && 
+                  el.textContent?.trim() === textToMatch
+                );
+                
+                if (interactiveMatches.length > 0) {
+                  return interactiveMatches[0] as HTMLElement;
+                }
+                
+                return containsMatches[0] as HTMLElement;
               }
             } catch (e) {
               console.log(`[ELEMENT-FINDER] Error searching text in ${name}:`, e);
@@ -168,6 +199,16 @@ export class ElementUtils {
           const idParts = element.id.split('-');
           const mantinePrefix = idParts[0]; // "mantine"
           
+          // Identify if this is a tab component based on ID pattern
+          const isTabComponent = element.id.includes('-tab-');
+          const tabIdentifier = isTabComponent ? element.id.split('-tab-')[1] : null;
+          
+          console.log(`[ELEMENT-FINDER] Mantine component analysis:`, {
+            isTabComponent,
+            tabIdentifier,
+            fullId: element.id
+          });
+          
           for (const {name, root} of searchRoots) {
             // Try to find elements with similar pattern
             // First try direct ID
@@ -176,6 +217,37 @@ export class ElementUtils {
             if (directMatch) {
               console.log(`[ELEMENT-FINDER] Found direct ID match in ${name}`);
               return directMatch;
+            }
+            
+            // SPECIAL CASE: For Mantine tabs, try a more robust approach
+            if (isTabComponent && tabIdentifier) {
+              console.log(`[ELEMENT-FINDER] Trying tab-specific matching for "${tabIdentifier}" in ${name}`);
+              
+              // Try finding any button with -tab- in ID and the tab identifier
+              const tabSelector = `button[id*="-tab-${tabIdentifier}"]`;
+              const tabElements = root.querySelectorAll(tabSelector);
+              console.log(`[ELEMENT-FINDER] Found ${tabElements.length} tab elements with ID pattern matching ${tabIdentifier}`);
+              
+              if (tabElements.length > 0) {
+                return tabElements[0] as HTMLElement;
+              }
+              
+              // If that fails, look for buttons with matching text content
+              if (element.textContent) {
+                console.log(`[ELEMENT-FINDER] Looking for tab buttons with text "${element.textContent}"`);
+                
+                const buttons = Array.from(root.querySelectorAll('button'));
+                const textMatches = buttons.filter(btn => {
+                  const btnText = btn.textContent?.trim();
+                  return btnText === element.textContent;
+                });
+                
+                console.log(`[ELEMENT-FINDER] Found ${textMatches.length} buttons with text "${element.textContent}"`);
+                
+                if (textMatches.length > 0) {
+                  return textMatches[0] as HTMLElement;
+                }
+              }
             }
             
             // Try finding all elements that match the pattern
@@ -292,6 +364,41 @@ export class ElementUtils {
               if (elements.length > 0) {
                 return elements[0] as HTMLElement;
               }
+            }
+          }
+        }
+        
+        // STRATEGY 4.5: Specific handling for Mantine tabs
+        findingDetails.tried.push("Mantine Tab Search");
+        console.log('[ELEMENT-FINDER] Trying specific Mantine tab search...');
+        
+        // Check if this might be a tab based on content and tag
+        if (element.tagName === 'BUTTON' && element.textContent) {
+          console.log(`[ELEMENT-FINDER] Looking for tab with text: "${element.textContent}"`);
+          
+          for (const {name, root} of searchRoots) {
+            // Look for buttons that have classes indicating they're tabs
+            const potentialTabs = Array.from(
+              root.querySelectorAll('button[class*="mantine-Tabs-tab"]')
+            );
+            
+            if (!potentialTabs.length) {
+              // Fallback to any button if no specific tab classes found
+              potentialTabs.push(...Array.from(root.querySelectorAll('button')));
+            }
+            
+            console.log(`[ELEMENT-FINDER] Found ${potentialTabs.length} potential tabs in ${name}`);
+            
+            // Find tabs with matching text
+            const matchingTabs = potentialTabs.filter(tab => {
+              const tabText = tab.textContent?.trim();
+              return tabText === element.textContent;
+            });
+            
+            console.log(`[ELEMENT-FINDER] Found ${matchingTabs.length} tabs with text "${element.textContent}" in ${name}`);
+            
+            if (matchingTabs.length > 0) {
+              return matchingTabs[0] as HTMLElement;
             }
           }
         }
@@ -693,7 +800,12 @@ export class ElementUtils {
       if (!targetText) return true;
       const elementText = element.textContent?.trim() || '';
       const searchText = targetText.trim();
-      return elementText === searchText;
+      
+      // First try exact match
+      if (elementText === searchText) return true;
+      
+      // If that fails, check if the element contains the text
+      return elementText.includes(searchText);
     }
   
     // Helper function to get element path
