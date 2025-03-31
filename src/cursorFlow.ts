@@ -721,14 +721,8 @@ export default class CursorFlow {
       
       console.time('Find target element');
       
-      // First try the new fuzzy matching logic
-      this.currentTargetElement = ElementUtils.findElementWithFuzzyLogic(interaction);
-      
-      // If that doesn't work, fall back to the existing methods
-      if (!this.currentTargetElement) {
-        console.log('[ELEMENT-FINDER] Fuzzy search failed, falling back to standard search methods');
-        this.currentTargetElement = DomAnalyzer.findElement(interaction);
-      }
+      // Try standard search methods first
+      this.currentTargetElement = DomAnalyzer.findElement(interaction);
       
       // If still not found, try the original method as last resort
       if (!this.currentTargetElement) {
