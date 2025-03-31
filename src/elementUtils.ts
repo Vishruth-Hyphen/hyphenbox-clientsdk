@@ -318,19 +318,16 @@ export class ElementUtils {
                 console.log(`[ELEMENT-FINDER] Found ${elements.length} attribute matches in ${name}`);
                 
                 if (elements.length > 0) {
-                  // Get target text from either element.textContent or interaction.text
                   const targetText = element.textContent || interaction.text;
                   
-                  // If we have target text, find element with matching text
                   if (targetText) {
                     console.log(`[ELEMENT-FINDER] Checking text content match for "${targetText}"`);
-                    for (const el of elements) {
+                    for (const el of Array.from(elements)) {
                       if (this.isTextMatch(el as HTMLElement, targetText)) {
                         console.log(`[ELEMENT-FINDER] Found element with matching text in ${name}`);
                         return el as HTMLElement;
                       }
                     }
-                    // If no text match found, continue to next search root
                     continue;
                   }
                   
@@ -838,7 +835,7 @@ export class ElementUtils {
       
       // 2. Look inside modals/portals specifically
       const portals = document.querySelectorAll('[data-portal="true"]');
-      for (const portal of portals) {
+      for (const portal of Array.from(portals)) {
         inputs = Array.from(portal.querySelectorAll(`input[placeholder="${placeholder}"]`));
         console.log(`[MANTINE-FINDER] Found ${inputs.length} inputs in portal with placeholder match`);
         
@@ -851,35 +848,37 @@ export class ElementUtils {
         console.log(`[MANTINE-FINDER] Found ${mantineInputs.length} Mantine inputs in portal`);
         
         for (const input of mantineInputs) {
-          if (input.getAttribute('placeholder') === placeholder) {
+          const typedInput = input as HTMLInputElement;
+          if (typedInput.getAttribute('placeholder') === placeholder) {
             console.log('[MANTINE-FINDER] Found matching Mantine input by class + placeholder');
-            return input as HTMLElement;
+            return typedInput as HTMLElement;
           }
           
           // Log all found inputs for debugging
           console.log('[MANTINE-FINDER] Portal input:', {
-            placeholder: input.getAttribute('placeholder'),
-            id: input.id,
-            classes: input.className
+            placeholder: typedInput.getAttribute('placeholder'),
+            id: typedInput.id,
+            classes: typedInput.className
           });
         }
       }
       
       // 3. Find Mantine inputs by class
-      const allMantineInputs = document.querySelectorAll('input[class*="mantine-Input-input"]');
+      const allMantineInputs = Array.from(document.querySelectorAll('input[class*="mantine-Input-input"]'));
       console.log(`[MANTINE-FINDER] Found ${allMantineInputs.length} total Mantine inputs in document`);
       
       for (const input of allMantineInputs) {
+        const typedInput = input as HTMLInputElement;
         // Log all for debugging
         console.log('[MANTINE-FINDER] Mantine input:', {
-          placeholder: input.getAttribute('placeholder'),
-          id: input.id,
-          classes: input.className,
-          visible: (input as HTMLElement).offsetParent !== null
+          placeholder: typedInput.getAttribute('placeholder'),
+          id: typedInput.id,
+          classes: typedInput.className,
+          visible: (typedInput as HTMLElement).offsetParent !== null
         });
         
-        if (input.getAttribute('placeholder') === placeholder) {
-          return input as HTMLElement;
+        if (typedInput.getAttribute('placeholder') === placeholder) {
+          return typedInput as HTMLElement;
         }
       }
       
@@ -1038,7 +1037,7 @@ export class ElementUtils {
           
           // Check for text in child elements (especially spans)
           const childTextElements = candidateEl.querySelectorAll('*');
-          for (const child of childTextElements) {
+          for (const child of Array.from(childTextElements)) {
             if (child.textContent?.trim() === element.textContent) {
               score += weights.exactTextMatch * 0.8; // Slightly lower than direct match
               break;
@@ -1059,7 +1058,7 @@ export class ElementUtils {
           
           // If both IDs have the same number of parts, check how many match
           if (elementIdParts.length === candidateIdParts.length) {
-            const matchingParts = elementIdParts.filter((part, index) => 
+            const matchingParts = elementIdParts.filter((part: string, index: number) => 
               part === candidateIdParts[index]
             ).length;
             
@@ -1074,8 +1073,8 @@ export class ElementUtils {
           const candidateClasses = candidateEl.className.split(' ');
           
           // Check for common class name patterns
-          const commonPatterns = elementClasses.filter(cls => {
-            return candidateClasses.some(candCls => {
+          const commonPatterns = elementClasses.filter((cls: string) => {
+            return candidateClasses.some((candCls: string) => {
               // Check for similar prefixes/suffixes even if the random part is different
               const clsParts = cls.split('-');
               const candClsParts = candCls.split('-');

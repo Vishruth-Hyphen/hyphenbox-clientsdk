@@ -720,13 +720,23 @@ export default class CursorFlow {
       }));
       
       console.time('Find target element');
-      this.currentTargetElement = ElementUtils.findElementWithFuzzyLogic(interaction);
-      console.timeEnd('Find target element');
       
-      // Use the original finder as fallback if needed
+      // First try the new fuzzy matching logic
+      this.currentTargetElement = ElementUtils.findElementWithFuzzyLogic(interaction);
+      
+      // If that doesn't work, fall back to the existing methods
       if (!this.currentTargetElement) {
+        console.log('[ELEMENT-FINDER] Fuzzy search failed, falling back to standard search methods');
         this.currentTargetElement = DomAnalyzer.findElement(interaction);
       }
+      
+      // If still not found, try the original method as last resort
+      if (!this.currentTargetElement) {
+        console.log('[ELEMENT-FINDER] Standard search methods failed, trying original element finder');
+        this.currentTargetElement = ElementUtils.findElementFromInteraction(interaction, false);  // Set requireExactMatch to false
+      }
+      
+      console.timeEnd('Find target element');
       
       if (!this.currentTargetElement) {
         console.warn('Target element not found for step:', currentStep);
