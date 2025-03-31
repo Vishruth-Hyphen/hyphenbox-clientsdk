@@ -1244,13 +1244,15 @@ export default class CursorFlow {
       // Save state immediately since this is the final state
       StateManager.saveWithDebounce(this.state, true);
       
+      // Clean up ALL UI elements including cursor
+      CursorFlowUI.cleanupAllUI(false, true);  // Changed keepCursor to false
+      
       // Show completion popup near the guide button
       if (this.startButton) {
         CursorFlowUI.showCompletionPopup(this.startButton);
       }
       
-      // Clean up
-      this.hideVisualElements();
+      // Update button state
       this.updateButtonState();
       
       // Also show notification for extra visibility
