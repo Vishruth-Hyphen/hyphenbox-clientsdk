@@ -29,6 +29,14 @@ export interface CursorFlowOptions {
     brand_color?: string;
     cursor_company_label?: string | null;
     logo_url?: string | null;
+    modal_bg_color?: string;
+    font_family?: string;
+    text_color?: string;
+    search_border_color?: string;
+    search_icon_color?: string;
+    link_color?: string;
+    footer_text_color?: string;
+    close_button_color?: string;
   }
   
   export interface NotificationOptions {

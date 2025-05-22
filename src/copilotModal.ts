@@ -2,6 +2,7 @@ import { ApiClient } from './apiClient';
 import { ThemeOptions } from './types'; // Import from types.ts instead of uiComponents.ts
 import hyphenboxSvg from '../assets/hyphenbox.svg'; // Import the SVG
 import { OnboardingModal } from './onboardingChecklist';
+import { ViewAllGuidesModal } from './viewAllGuides'; // Corrected import path
 
 export class CopilotModal {
     private static activeModal: HTMLElement | null = null;
@@ -10,9 +11,13 @@ export class CopilotModal {
     // private static onViewAllGuides: () => void = () => {}; // No longer needed, handled internally
     private static theme: ThemeOptions = {};
     private static searchLoadingIndicator: HTMLElement | null = null; // Specific loading indicator
-    private static currentView: 'search' | 'list' = 'search'; // Track current view
-    private static allGuides: any[] = []; // Cache guides
+    private static currentView: 'search' | 'list' | 'onboarding' = 'search'; // Track current view
     private static loadingDotsStyleAdded: boolean = false; // Ensure style is added only once
+
+    // Pointers to the persistent containers within the modal
+    private static modalHeaderContainer: HTMLElement | null = null;
+    private static modalMainContentContainer: HTMLElement | null = null;
+    private static modalFooterContainer: HTMLElement | null = null;
 
     static init(
         apiClient: ApiClient, 
@@ -73,85 +78,64 @@ export class CopilotModal {
     }
 
     static showSearchModal() {
-        // Close existing modal first
-        this.closeSearchModal();
-        this.currentView = 'search'; // Ensure default view
-        this.addLoadingDotsStyle(); // Ensure styles are present
+        this.closeSearchModal(); // Close existing modal first
+        this.currentView = 'search';
+        this.addLoadingDotsStyle();
 
-        // Create overlay - Updated background color
         const overlay = document.createElement('div');
         overlay.id = 'hyphen-search-overlay';
         overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.7); /* !! UPDATED TO DARKER BLACK !! */
-            z-index: 10000; /* Ensure it's above most elements */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.7); z-index: 10000;
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.3s ease;
         `;
 
-        // Create modal container
         const modal = document.createElement('div');
         modal.id = 'hyphen-search-modal';
         modal.style.cssText = `
-            background-color: #ffffff;
-            padding: 0; /* Remove padding here, apply to inner container */
-            border-radius: 16px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
-            width: 90%;
-            max-width: 500px;
-            /* Allow height to adjust */
-            max-height: 80vh; /* Limit height */
-            transform: translateY(20px);
-            transition: transform 0.3s ease;
+            background-color: #ffffff; padding: 0; border-radius: 16px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15); width: 90%; max-width: 500px;
+            max-height: 80vh; transform: translateY(20px); transition: transform 0.3s ease;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex; /* Use flex for layout */
-            flex-direction: column; /* Stack vertically */
-            overflow: hidden; /* Needed for border-radius and scrolling */
+            display: flex; flex-direction: column; overflow: hidden;
         `;
 
-        // Inner container for content and padding
-        const modalContent = document.createElement('div');
-        modalContent.id = 'hyphen-modal-content';
-        modalContent.style.cssText = `
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            flex-grow: 1; /* Allow content to grow */
-            overflow-y: auto; /* Enable scrolling for content if needed */
+        // Create persistent containers
+        this.modalHeaderContainer = document.createElement('div');
+        this.modalHeaderContainer.id = 'hyphen-modal-header-content';
+        this.modalHeaderContainer.style.padding = '24px 24px 0px 24px'; // Padding for header elements
+
+        this.modalMainContentContainer = document.createElement('div');
+        this.modalMainContentContainer.id = 'hyphen-modal-main-content'; // This is where app content goes
+        this.modalMainContentContainer.style.cssText = `
+            padding: 16px 24px; /* Standard padding for main content area */
+            flex-grow: 1; 
+            overflow-y: auto; 
         `;
 
-        // Render the initial search view
-        this.renderSearchView(modalContent); // Pass content container
+        this.modalFooterContainer = document.createElement('div');
+        this.modalFooterContainer.id = 'hyphen-modal-footer-content';
+        // Footer styling will be applied by createFooter, but we can add base padding if needed.
+        // this.modalFooterContainer.style.padding = '0 24px 24px 24px';
 
-        // Assemble Modal (add content container)
-        modal.appendChild(modalContent);
+        modal.appendChild(this.modalHeaderContainer);
+        modal.appendChild(this.modalMainContentContainer);
+        modal.appendChild(this.modalFooterContainer);
 
-        // Assemble Overlay
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
         this.activeModal = modal;
 
-        // Trigger animations
+        // Initial render: Search view for header and main content, and the persistent footer
+        this.renderSearchView(); 
+        this.renderPersistentFooter();
+
         requestAnimationFrame(() => {
             overlay.style.opacity = '1';
             modal.style.transform = 'translateY(0)';
         });
 
-        // Focus input if in search view
-        const input = modal.querySelector<HTMLInputElement>('#hyphen-search-input');
-        if (input) {
-            input.focus();
-        }
-
-        // Close on overlay click
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 this.closeSearchModal();
@@ -159,381 +143,188 @@ export class CopilotModal {
         });
     }
 
-    // --- NEW: Method to render the initial Search View ---
-    private static renderSearchView(container: HTMLElement) {
-        container.innerHTML = ''; // Clear previous content
-        this.currentView = 'search'; // Set view state
+    private static renderPersistentHeader(viewTitle: string, showBackButton: boolean) {
+        if (!this.modalHeaderContainer) return;
+        this.modalHeaderContainer.innerHTML = ''; // Clear previous header
 
-        // Title
-        const title = document.createElement('h2');
-        title.textContent = 'How can I help you today?';
-        title.style.cssText = `
-            margin: 0 0 8px 0; /* Added bottom margin */
-            font-size: 18px;
-            font-weight: 600;
-            color: #1a1a1a;
-            text-align: center;
-        `;
+        const titleEl = document.createElement('h2');
+        titleEl.textContent = viewTitle;
+        Object.assign(titleEl.style, {
+            color: this.theme?.text_color || '#333',
+            margin: '0', 
+            fontSize: showBackButton ? '20px' : '24px', 
+            fontWeight: '600',
+            textAlign: showBackButton ? 'left' : 'center' as 'center',
+            flexGrow: '1'
+        });
 
-        // Search Input Area
-        const searchArea = document.createElement('div');
-        searchArea.style.cssText = `
-            display: flex;
-            gap: 8px;
-            align-items: center; /* Vertically align items */
-        `;
+        if (showBackButton) {
+            const backButton = document.createElement('button');
+            backButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`;
+            backButton.setAttribute('aria-label', 'Back');
+            Object.assign(backButton.style, { background: 'none', border: 'none', padding: '0 10px 0 0', cursor: 'pointer', color: this.theme?.text_color || '#555', display: 'flex', alignItems: 'center' });
+            backButton.onclick = () => {
+                this.renderSearchView(); 
+            };
+            //this.modalHeaderContainer.appendChild(backButton); // Append to headerRow instead
+
+            const headerRow = document.createElement('div');
+            headerRow.style.display = 'flex';
+            headerRow.style.alignItems = 'center';
+            headerRow.appendChild(backButton); // Now backButton is guaranteed to exist here
+            headerRow.appendChild(titleEl);
+            this.modalHeaderContainer.appendChild(headerRow);
+        } else {
+            this.modalHeaderContainer.appendChild(titleEl); // No back button, just title
+        }
+    }
+
+    private static renderPersistentFooter() {
+        if (!this.modalFooterContainer) return;
+        // The footer is now always the same, with nav links
+        const footerElement = this.createFooter(); // No view parameter needed, or can be ignored
+        this.modalFooterContainer.innerHTML = ''; // Clear previous
+        this.modalFooterContainer.appendChild(footerElement);
+    }
+
+    private static renderSearchView() {
+        if (!this.modalMainContentContainer || !this.modalHeaderContainer) return;
+        this.currentView = 'search';
+        
+        this.renderPersistentHeader('How can I help you today?', false); // No back button for main search view
+        this.modalMainContentContainer.innerHTML = ''; // Clear previous main content
+
+        // Search container styling (from previous renderSearchView)
+        const searchSection = document.createElement('div'); // Use a section for content within main
+        Object.assign(searchSection.style, {
+             // Optional: add specific padding for search section if needed, otherwise relies on modalMainContentContainer padding
+        });
+
+        const searchContainer = document.createElement('div');
+        Object.assign(searchContainer.style, { /* ... search bar container styles ... */ 
+            display: 'flex', alignItems: 'center', marginBottom: '25px',
+            border: this.theme?.search_border_color ? `1px solid ${this.theme.search_border_color}` : '1px solid #ddd',
+            borderRadius: '8px', padding: '5px'
+        });
 
         const input = document.createElement('input');
+        // ... input styles and event listeners ...
         input.type = 'text';
         input.placeholder = 'Ask a question or describe your task...';
-        input.id = 'hyphen-search-input'; // Keep ID for focusing
-        input.style.cssText = `
-            flex-grow: 1;
-            padding: 10px 14px;
-            border: 1px solid #d0d0d0;
-            border-radius: 8px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        `;
-        input.addEventListener('focus', () => {
-            input.style.borderColor = '#808080';
-            input.style.boxShadow = '0 0 0 2px rgba(128, 128, 128, 0.2)';
-        });
-        input.addEventListener('blur', () => {
-            input.style.borderColor = '#d0d0d0';
-            input.style.boxShadow = 'none';
+        input.id = 'hyphen-search-input'; 
+        Object.assign(input.style, { 
+            flexGrow: '1', padding: '12px 15px', border: 'none', 
+            outline: 'none', fontSize: '16px', backgroundColor: 'transparent' 
         });
 
-        // Unassuming Search Button (Icon Only)
         const searchButton = document.createElement('button');
+        // ... search button styles, SVG, and event listener ...
         searchButton.id = 'hyphen-search-submit';
-        searchButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-        `; // Search Icon
+        searchButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
         searchButton.setAttribute('aria-label', 'Search');
-        searchButton.style.cssText = `
-            padding: 8px; /* Adjust padding for icon */
-            border: 1px solid #e0e0e0; /* Subtle border */
-            border-radius: 8px;
-            background-color: #f8f8f8; /* Light gray */
-            color: #555; /* Icon color */
-            cursor: pointer;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
-            display: flex; /* Align icon */
-            align-items: center;
-            justify-content: center;
-        `;
-        searchButton.addEventListener('mouseover', () => { 
-            searchButton.style.backgroundColor = '#eee'; 
-            searchButton.style.borderColor = '#ccc';
+        Object.assign(searchButton.style, { 
+            padding: '10px', border: 'none', backgroundColor: 'transparent', 
+            color: this.theme?.search_icon_color || '#555', cursor: 'pointer', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center' 
         });
-        searchButton.addEventListener('mouseout', () => { 
-            searchButton.style.backgroundColor = '#f8f8f8'; 
-            searchButton.style.borderColor = '#e0e0e0'; 
-        });
-        searchButton.addEventListener('click', () => this.handleSearch(input.value));
+        searchButton.onclick = () => this.handleSearch(input.value);
+        input.onkeydown = (e) => { if (e.key === 'Enter') searchButton.click(); };
 
-        // Add Enter key listener to input
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                searchButton.click();
-            }
-        });
+        searchContainer.appendChild(input);
+        searchContainer.appendChild(searchButton);
+        searchSection.appendChild(searchContainer);
 
-        searchArea.appendChild(input);
-        searchArea.appendChild(searchButton);
-
-        // Results Area (for messages)
         const resultsArea = document.createElement('div');
         resultsArea.id = 'hyphen-search-results';
-        resultsArea.style.cssText = `
-            min-height: 40px; /* Increased height */
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-            margin-top: 8px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 10px; /* Gap for button */
-        `;
+        // ... resultsArea styling ...
+        Object.assign(resultsArea.style, { 
+            minHeight: '40px', textAlign: 'center' as 'center', fontSize: '14px', color: '#666',
+            marginTop: '8px', marginBottom: '0px', /* No bottom margin, footer handles spacing */
+            display: 'flex', flexDirection: 'column' as 'column', 
+            alignItems: 'center' as 'center', justifyContent: 'center' as 'center', gap: '10px'
+        });
+        searchSection.appendChild(resultsArea);
+        this.modalMainContentContainer.appendChild(searchSection);
 
-        // Footer Area
-        const footerArea = this.createFooter('search'); // Create footer for search view
-
-        // Assemble Content
-        container.appendChild(title);
-        container.appendChild(searchArea);
-        container.appendChild(resultsArea);
-        container.appendChild(footerArea);
-
-        // Focus input after rendering
         requestAnimationFrame(() => input.focus());
+        // Footer is persistent and rendered by renderPersistentFooter
     }
 
-    // --- NEW: Method to render the Guide List View ---
-    private static async renderListView(container: HTMLElement) {
-        container.innerHTML = ''; // Clear previous content
-        this.currentView = 'list';
-
-        // --- Header with Back Button and Title ---
-        const listHeader = document.createElement('div');
-        listHeader.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 8px; /* Space below header */
-        `;
-
-        // Back Button
-        const backButton = document.createElement('button');
-        backButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>`; // Back arrow icon
-        backButton.setAttribute('aria-label', 'Back to search');
-        backButton.style.cssText = `
-            background: none;
-            border: none;
-            padding: 5px;
-            cursor: pointer;
-            color: #555;
-            display: flex;
-            align-items: center;
-        `;
-        backButton.addEventListener('click', () => this.renderSearchView(container)); // Re-render search view
-
-        // Title
-        const listTitle = document.createElement('h2');
-        listTitle.textContent = 'All Guides';
-        listTitle.style.cssText = `
-            margin: 0;
-            font-size: 18px;
-            font-weight: 600;
-            color: #1a1a1a;
-            flex-grow: 1; /* Take remaining space */
-            text-align: center; /* Center title if needed */
-            padding-right: 30px; /* Offset back button space */
-        `;
-
-        listHeader.appendChild(backButton);
-        listHeader.appendChild(listTitle);
-        container.appendChild(listHeader);
-
-        // --- Keyword Search Input for List ---
-        const listSearchInput = document.createElement('input');
-        listSearchInput.type = 'text';
-        listSearchInput.placeholder = 'Filter guides...';
-        listSearchInput.style.cssText = `
-            width: 100%; /* Full width */
-            padding: 8px 12px;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            outline: none;
-            margin-bottom: 12px; /* Space below input */
-            box-sizing: border-box; /* Include padding/border in width */
-        `;
-
-        container.appendChild(listSearchInput);
-
-
-        // --- Guide List Area ---
-        const guideListArea = document.createElement('div');
-        guideListArea.id = 'hyphen-guide-list';
-        guideListArea.style.cssText = `
-            max-height: 40vh; /* Limit height and make scrollable */
-            overflow-y: auto;
-            border: 1px solid #f0f0f0; /* Optional border */
-            border-radius: 8px;
-        `;
-        container.appendChild(guideListArea);
-
-
-        // --- Loading Indicator ---
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.textContent = 'Loading guides...';
-        loadingIndicator.style.cssText = `padding: 20px; text-align: center; color: #888; font-style: italic;`;
-        guideListArea.appendChild(loadingIndicator);
-
-        // --- Footer ---
-        const footerArea = this.createFooter('list'); // Create footer for list view
-        container.appendChild(footerArea); // Append footer directly to container
-
-        // --- Fetch and Render Guides ---
-        try {
-            // Fetch guides only if not cached or cache is empty
-            if (!this.allGuides || this.allGuides.length === 0) {
-                if (!this.apiClient) throw new Error("API Client not initialized");
-                console.log('Fetching all guides for list view...');
-                this.allGuides = await this.apiClient.getRecordings(); // Fetch all guides (no query)
-            }
-
-            loadingIndicator.remove(); // Remove loading indicator
-
-            if (!this.allGuides || this.allGuides.length === 0) {
-                guideListArea.innerHTML = `<div style="padding: 20px; text-align: center; color: #888;">No guides available.</div>`;
-                return;
-            }
-
-            // Function to render the list items
-            const renderListItems = (guides: any[]) => {
-                guideListArea.innerHTML = ''; // Clear previous items
-                guides.forEach(guide => {
-                    const item = document.createElement('div');
-                    item.textContent = guide.name || 'Untitled Guide';
-                    item.style.cssText = `
-                        padding: 10px 15px;
-                        cursor: pointer;
-                        border-bottom: 1px solid #f0f0f0;
-                        font-size: 14px;
-                        transition: background-color 0.2s ease;
-                        color: #333;
-                    `;
-                    item.addEventListener('mouseover', () => item.style.backgroundColor = '#f9f9f9');
-                    item.addEventListener('mouseout', () => item.style.backgroundColor = '');
-                    item.addEventListener('click', () => {
-                        this.closeSearchModal();
-                        this.onGuideFound(guide.id); // Trigger guide start
-                    });
-                    guideListArea.appendChild(item);
-                });
-                 // Remove border from last item
-                 const lastItem = guideListArea.lastElementChild as HTMLElement;
-                 if (lastItem) {
-                     lastItem.style.borderBottom = 'none';
-                 }
-            };
-
-            // Initial render of all guides
-            renderListItems(this.allGuides);
-
-            // Add filtering logic to the search input
-            listSearchInput.addEventListener('input', (e) => {
-                const query = (e.target as HTMLInputElement).value.toLowerCase();
-                const filteredGuides = this.allGuides.filter(guide =>
-                    (guide.name || '').toLowerCase().includes(query) ||
-                    (guide.description || '').toLowerCase().includes(query)
-                );
-                renderListItems(filteredGuides);
-            });
-
-        } catch (error) {
-            console.error('Failed to fetch or render guides:', error);
-            guideListArea.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc3545;">Failed to load guides.</div>`;
-        }
-    }
-
-
-    // --- NEW: Method to create the footer based on view ---
-    private static createFooter(view: 'search' | 'list' | 'onboarding'): HTMLElement {
+    // createFooter now always creates the main footer with nav links
+    private static createFooter(): HTMLElement {
         const footerArea = document.createElement('div');
         footerArea.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-top: 1px solid #f0f0f0;
-            padding-top: 16px;
-            margin-top: 16px; /* Consistent margin */
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid #f0f0f0; padding: 16px 24px; /* Add padding here */
+            margin-top: 0; /* Footer is positioned by its container */
         `;
 
-        // Left side: buttons container
         const leftSide = document.createElement('div');
-        leftSide.style.cssText = `
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        `;
+        leftSide.style.cssText = `display: flex; gap: 12px; align-items: center;`;
 
-        // 'View All Guides' button (only in search view)
-        if (view === 'search') {
-            const allGuidesButton = document.createElement('button');
-            allGuidesButton.textContent = 'View All Guides';
-            allGuidesButton.style.cssText = `
-                background: none;
-                border: none;
-                color: #555;
-                font-size: 13px;
-                cursor: pointer;
-                padding: 5px;
-                text-decoration: underline;
-                transition: color 0.2s;
-            `;
-            allGuidesButton.addEventListener('mouseover', () => allGuidesButton.style.color = '#111');
-            allGuidesButton.addEventListener('mouseout', () => allGuidesButton.style.color = '#555');
-            allGuidesButton.addEventListener('click', () => {
-                // Find the modal content container and render the list view
-                const modalContent = document.getElementById('hyphen-modal-content');
-                if (modalContent) {
-                    this.renderListView(modalContent);
-                } else {
-                    console.error("Could not find modal content container to render list view.");
-                }
-                // Don't close modal here
-            });
-            leftSide.appendChild(allGuidesButton);
+        const allGuidesButton = document.createElement('button');
+        // ... allGuidesButton styling and click handler ...
+        allGuidesButton.textContent = 'View All Guides';
+        Object.assign(allGuidesButton.style, { /* styles */ 
+            background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
+            fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
+        });
+        allGuidesButton.onclick = () => {
+            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) return;
+            this.currentView = 'list';
+            this.renderPersistentHeader('All Guides', true); // Show header with back button
+            ViewAllGuidesModal.renderInContainer(
+                this.modalMainContentContainer, 
+                this.apiClient, 
+                (guideId: string) => { 
+                    this.closeSearchModal(); 
+                    this.onGuideFound(guideId); 
+                }, 
+                () => { this.renderSearchView(); }, // Back action for ViewAllGuides is to render search view
+                this.theme
+            );
+        };
+        leftSide.appendChild(allGuidesButton);
             
-            // Add Onboarding button (only in search view)
-            const onboardingButton = document.createElement('button');
-            onboardingButton.textContent = 'Onboarding';
-            onboardingButton.style.cssText = `
-                background: none;
-                border: none;
-                color: #555;
-                font-size: 13px;
-                cursor: pointer;
-                padding: 5px;
-                text-decoration: underline;
-                transition: color 0.2s;
-            `;
-            onboardingButton.addEventListener('mouseover', () => onboardingButton.style.color = '#111');
-            onboardingButton.addEventListener('mouseout', () => onboardingButton.style.color = '#555');
-            onboardingButton.addEventListener('click', () => {
-                // Don't close the modal, instead render onboarding view in this modal
-                console.log('[CopilotModal] Onboarding button clicked, switching to onboarding view');
-                const modalContent = document.getElementById('hyphen-modal-content');
-                if (modalContent) {
-                    // Show loading state while we fetch onboarding data
-                    this.renderOnboardingLoadingState(modalContent);
-                    
-                    // Call OnboardingModal to render in our container
-                    if (this.apiClient) {
-                        OnboardingModal.renderInExistingModal(modalContent, () => {
-                            // Back function - return to search view
-                            this.renderSearchView(modalContent);
-                        });
-                    } else {
-                        console.error("[CopilotModal] API client not initialized for onboarding view");
-                    }
-                } else {
-                    console.error("[CopilotModal] Could not find modal content container to render onboarding view.");
-                }
+        const onboardingButton = document.createElement('button');
+        // ... onboardingButton styling and click handler ...
+        onboardingButton.textContent = 'Onboarding';
+        Object.assign(onboardingButton.style, { /* styles */ 
+            background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
+            fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
+        });
+        onboardingButton.onclick = () => {
+            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) return;
+            this.currentView = 'onboarding';
+            this.renderPersistentHeader('Onboarding', true); // Show header with back button
+            // OnboardingModal's renderInExistingModal already handles its internal content structure.
+            // The onBack passed to it will be used by CopilotModal's back button.
+            OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
+                this.renderSearchView(); 
             });
-            leftSide.appendChild(onboardingButton);
-        }
+        };
+        leftSide.appendChild(onboardingButton);
 
-        // Right side: Powered by
-        const poweredByFooter = this.createPoweredByFooter(); // Use helper
-
+        const poweredByFooter = this.createPoweredByFooter();
         footerArea.appendChild(leftSide);
         footerArea.appendChild(poweredByFooter);
-
         return footerArea;
     }
 
+    // renderOnboardingLoadingState is removed, OnboardingModal.renderInExistingModal handles its own loading
+    // and CopilotModal just needs to set the header and call it.
 
+    // ... other methods like closeSearchModal, handleSearch, updateResultsMessage, showSearchLoading, hideSearchLoading, addLoadingDotsStyle, adjustColor, createPoweredByFooter remain largely the same ...
+    // Minor adjustments might be needed in updateResultsMessage if its container changes due to new structure.
+
+    // Close modal also needs to clear these new static refs
     static closeSearchModal() {
-        this.hideSearchLoading(); // Ensure loading state is cleared
+        this.hideSearchLoading(); 
         const overlay = document.getElementById('hyphen-search-overlay');
         const modal = this.activeModal;
 
         if (overlay && modal) {
+            // ... animation and removal ...
             overlay.style.opacity = '0';
             modal.style.transform = 'translateY(20px)';
             setTimeout(() => {
@@ -541,14 +332,18 @@ export class CopilotModal {
                     document.body.removeChild(overlay);
                 }
                 this.activeModal = null;
+                this.modalHeaderContainer = null;      // Clear ref
+                this.modalMainContentContainer = null; // Clear ref
+                this.modalFooterContainer = null;    // Clear ref
             }, 300);
         } else if (overlay && document.body.contains(overlay)) {
-            // Fallback if modal reference lost
             document.body.removeChild(overlay);
         }
         this.activeModal = null;
-        this.currentView = 'search'; // Reset view on close
-        this.allGuides = []; // Clear guide cache on close
+        this.currentView = 'search';
+        this.modalHeaderContainer = null; 
+        this.modalMainContentContainer = null;
+        this.modalFooterContainer = null;
     }
 
     private static async handleSearch(query: string) {
@@ -778,79 +573,5 @@ export class CopilotModal {
         } else {
              console.warn('[Hyphen CopilotModal] Fallback SVG element not found in container.');
         }
-    }
-
-    // NEW: Method to show loading state for onboarding content
-    private static renderOnboardingLoadingState(container: HTMLElement) {
-        container.innerHTML = ''; // Clear previous content
-        
-        // Title
-        const title = document.createElement('h2');
-        title.textContent = 'Onboarding';
-        title.style.cssText = `
-            margin: 0 0 16px 0;
-            font-size: 20px;
-            font-weight: 600;
-            color: #1a1a1a;
-            text-align: center;
-        `;
-        
-        // Back button to return to search
-        const headerDiv = document.createElement('div');
-        headerDiv.style.cssText = `
-            display: flex;
-            align-items: center;
-            margin-bottom: 16px;
-        `;
-        
-        const backButton = document.createElement('button');
-        backButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>`;
-        backButton.setAttribute('aria-label', 'Back to search');
-        backButton.style.cssText = `
-            background: none;
-            border: none;
-            padding: 5px;
-            cursor: pointer;
-            color: #555;
-            display: flex;
-            align-items: center;
-        `;
-        backButton.addEventListener('click', () => {
-            const modalContent = document.getElementById('hyphen-modal-content');
-            if (modalContent) {
-                this.renderSearchView(modalContent);
-            }
-        });
-        
-        headerDiv.appendChild(backButton);
-        headerDiv.appendChild(title);
-        
-        // Loading indicator
-        const loadingDiv = document.createElement('div');
-        loadingDiv.style.cssText = `
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            color: #888;
-            min-height: 100px;
-            margin: 20px 0;
-        `;
-        loadingDiv.innerHTML = `
-            <span>Loading onboarding checklists</span>
-            <span class="copilot-loading-dots"><span>.</span><span>.</span><span>.</span></span>
-        `;
-        
-        // Footer
-        const footer = this.createFooter('onboarding');
-        
-        // Assemble content
-        container.appendChild(headerDiv);
-        container.appendChild(loadingDiv);
-        container.appendChild(footer);
     }
 } 

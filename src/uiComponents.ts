@@ -1129,17 +1129,8 @@ export class CursorFlowUI {
     // Add to DOM
     document.body.appendChild(notification);
     
-    // Position next to the Co-pilot button
-    const guideButton = document.querySelector('.hyphen-start-button');
-    if (guideButton) {
-        const buttonRect = guideButton.getBoundingClientRect();
-        notification.style.bottom = `${20}px`; // Same bottom position as the button
-        notification.style.left = `${buttonRect.right + 10}px`; // Position 10px to the right of the button
-    } else {
-        // Fallback position if button not found
-        notification.style.bottom = '20px';
-        notification.style.left = '20px';
-    }
+    // Dynamically position near the active button
+    this.positionNotificationNearActiveButton(notification);
     
     // Auto-close if specified (default to 2000ms for stop notifications)
     if (options.autoClose) {
@@ -1156,6 +1147,120 @@ export class CursorFlowUI {
     }
     
     return notification;
+  }
+
+  /**
+   * Dynamically positions a notification near the currently active button
+   * Priority: copilot button > start button > dedicated stop button > fallback
+   */
+  private static positionNotificationNearActiveButton(notification: HTMLElement): void {
+    let activeButton: HTMLElement | null = null;
+    let buttonType = '';
+
+    // Strategy 1: Check for active copilot button (with stop functionality)
+    const copilotButton = document.querySelector('.hyphen-copilot-button.hyphen-stop-guide-active') as HTMLElement;
+    if (copilotButton && document.body.contains(copilotButton)) {
+      activeButton = copilotButton;
+      buttonType = 'copilot';
+    }
+
+    // Strategy 2: Check for active start button (with stop functionality)
+    if (!activeButton) {
+      const startButton = document.querySelector('.hyphen-start-button.hyphen-stop-guide-active') as HTMLElement;
+      if (startButton && document.body.contains(startButton)) {
+        activeButton = startButton;
+        buttonType = 'start';
+      }
+    }
+
+    // Strategy 3: Check for dedicated stop button
+    if (!activeButton) {
+      const dedicatedStopButton = document.querySelector('.hyphen-dedicated-stop-button') as HTMLElement;
+      if (dedicatedStopButton && document.body.contains(dedicatedStopButton)) {
+        activeButton = dedicatedStopButton;
+        buttonType = 'dedicated';
+      }
+    }
+
+    // Strategy 4: Fallback to any available button
+    if (!activeButton) {
+      const fallbackButton = document.querySelector('.hyphen-copilot-button, .hyphen-start-button') as HTMLElement;
+      if (fallbackButton && document.body.contains(fallbackButton)) {
+        activeButton = fallbackButton;
+        buttonType = 'fallback';
+      }
+    }
+
+    if (activeButton) {
+      const buttonRect = activeButton.getBoundingClientRect();
+      const notificationRect = notification.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Position based on button type and available space
+      if (buttonType === 'dedicated') {
+        // Dedicated button is center-bottom, so position notification above it
+        notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
+        notification.style.left = '50%';
+        notification.style.transform = 'translateX(-50%)';
+      } else {
+        // For copilot and start buttons, position to the side with best space
+        const spaceRight = viewportWidth - buttonRect.right;
+        const spaceLeft = buttonRect.left;
+        const spaceAbove = buttonRect.top;
+        const spaceBelow = viewportHeight - buttonRect.bottom;
+
+        // Prefer positioning to the right if there's enough space
+        if (spaceRight >= 320) { // 300px notification + 20px margin
+          notification.style.top = `${buttonRect.top}px`;
+          notification.style.left = `${buttonRect.right + 10}px`;
+          notification.style.transform = 'none';
+        }
+        // Otherwise try left
+        else if (spaceLeft >= 320) {
+          notification.style.top = `${buttonRect.top}px`;
+          notification.style.right = `${viewportWidth - buttonRect.left + 10}px`;
+          notification.style.left = 'auto';
+          notification.style.transform = 'none';
+        }
+        // Try above
+        else if (spaceAbove >= 100) {
+          notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
+          notification.style.left = `${buttonRect.left}px`;
+          notification.style.transform = 'none';
+        }
+        // Try below
+        else if (spaceBelow >= 100) {
+          notification.style.top = `${buttonRect.bottom + 10}px`;
+          notification.style.left = `${buttonRect.left}px`;
+          notification.style.transform = 'none';
+        }
+        // Fallback: position at button level, centered
+        else {
+          notification.style.top = `${buttonRect.top}px`;
+          notification.style.left = '50%';
+          notification.style.transform = 'translateX(-50%)';
+        }
+      }
+
+      console.log(`[NOTIFICATION] Positioned near ${buttonType} button at:`, {
+        buttonRect,
+        notificationStyle: {
+          top: notification.style.top,
+          bottom: notification.style.bottom,
+          left: notification.style.left,
+          right: notification.style.right,
+          transform: notification.style.transform
+        }
+      });
+    } else {
+      // Ultimate fallback position if no buttons found
+      notification.style.bottom = '20px';
+      notification.style.right = '20px';
+      notification.style.left = 'auto';
+      notification.style.transform = 'none';
+      console.log('[NOTIFICATION] No active button found, using fallback position');
+    }
   }
 
   static showErrorNotification(message: string, options: ErrorNotificationOptions): HTMLElement {

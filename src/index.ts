@@ -12,14 +12,33 @@ const API_URL = 'https://hyphenbox-backend.onrender.com';
 // Export CursorFlow as the default export (for browser compatibility)
 export default CursorFlow;
 
+export interface HyphenboxSDK {
+  onboarding: {
+    /** Shows the Onboarding Checklist modal. */
+    show: () => void;
+  };
+  copilot: {
+    /** Shows the main Copilot modal with search and links to other apps. */
+    show: () => void;
+  };
+  viewAllGuides: {
+    /** Shows the modal for listing all available guides. (Currently opens CopilotModal in list view) */
+    show: () => void;
+  };
+  // apiClient can be exposed if direct API access is ever needed by advanced users
+  // apiClient: ApiClient;
+}
+
+export interface HyphenboxInitializeOptions extends CursorFlowOptions {
+  useDefaultLauncher?: boolean; // Defaults to true. If true, shows the main Hyphenbox launcher.
+  // apiKey, userId, theme, debug are inherited from CursorFlowOptions
+}
+
 /**
  * Initialize the Hyphen SDK
  * This is the main entry point for the Hyphen SDK
  */
-export function initialize(options: CursorFlowOptions): { 
-  createCopilotButton: (container: HTMLElement, customClass?: string) => HTMLButtonElement,
-  createOnboardingButton: (container: HTMLElement, customClass?: string) => HTMLButtonElement
-} {
+export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
   // Ensure required options are provided
   if (!options.apiKey) {
     throw new Error('apiKey is required');
@@ -28,61 +47,75 @@ export function initialize(options: CursorFlowOptions): {
     throw new Error('userId is required');
   }
 
-  // Apply defaults - apiUrl is no longer configurable
-  const configuredOptions = {
-    buttonText: 'Help & Guides',
-    onboardingButtonText: 'Onboarding',
-    debug: false,
-    ...options,
-    apiClient: new ApiClient(
-      API_URL,
-      options.apiKey, // Use options.apiKey directly
-      options.userId // Use options.userId directly
-    )
+  const useDefaultLauncher = options.useDefaultLauncher !== undefined ? options.useDefaultLauncher : true;
+
+  const apiClientInstance = new ApiClient(
+    API_URL,
+    options.apiKey,
+    options.userId
+  );
+
+  const cursorFlowOptions: CursorFlowOptions = {
+    ...options, // Pass all original options (apiKey, userId, theme, debug, buttonText for default launcher)
+    apiClient: apiClientInstance,
   };
 
-  // Initialize CursorFlow with the shared apiClient instance
-  const cursorFlow = new CursorFlow(configuredOptions);
-  cursorFlow.init();
+  const cursorFlow = new CursorFlow(cursorFlowOptions);
+  // CursorFlow's init will handle the useDefaultLauncher flag
+  cursorFlow.init(useDefaultLauncher);
 
-  // Initialize CopilotModal with callback to CursorFlow and the apiClient
+  const internalStartGuide = (guideId: string) => {
+    // Ensure startGuideById is public on CursorFlow instance and correctly typed.
+    (cursorFlow as any).startGuideById(guideId); 
+  };
+
+  // Initialize modals so their static methods are ready
+  // MainLauncherModal.init(...) // Removed
+  
   CopilotModal.init(
-    configuredOptions.apiClient,
-    (guideId: string) => {
-      // Using any to access private method
-      (cursorFlow as any).startGuideAfterSearch(guideId);
-    },
-    configuredOptions.theme || {}
+    apiClientInstance,
+    internalStartGuide,
+    options.theme || {}
   );
 
-  // Initialize OnboardingModal with callback to CursorFlow and the apiClient
   OnboardingModal.init(
-    configuredOptions.apiClient,
-    (flowId: string) => {
-      // Using any to access private method
-      (cursorFlow as any).startGuideAfterSearch(flowId);
-    },
-    configuredOptions.theme || {}
+    apiClientInstance,
+    internalStartGuide,
+    options.theme || {}
   );
 
-  // Return functions to create buttons
-  return {
-    createCopilotButton: (container: HTMLElement, customClass?: string) => {
-      return CopilotModal.createCopilotButton(container, configuredOptions.buttonText, customClass);
+  const sdk: HyphenboxSDK = {
+    onboarding: {
+      show: () => OnboardingModal.showOnboardingModal(),
     },
-    createOnboardingButton: (container: HTMLElement, customClass?: string) => {
-      return OnboardingModal.createOnboardingButton(container, configuredOptions.onboardingButtonText, customClass);
-    }
+    copilot: {
+      show: () => CopilotModal.showSearchModal(),
+    },
+    viewAllGuides: {
+      show: () => {
+        CopilotModal.showSearchModal();
+        console.log("sdk.viewAllGuides.show() called. Currently opens CopilotModal search view. User can navigate to all guides.");
+      },
+    },
+    // apiClient: apiClientInstance, // Expose if needed
   };
+
+  return sdk;
 }
 
 // Also export other components for advanced usage
 export { ApiClient, CursorFlow, CopilotModal, OnboardingModal, FlowExecutionTracker };
 export * from './types';
 
-// Ensure CursorFlow is available on the window object for the extension
-/*
+// Ensure Hyphenbox SDK is available on the window object for the extension and direct script integrations
 if (typeof window !== 'undefined') {
-  (window as any).CursorFlow = CursorFlow;
+  (window as any).Hyphenbox = {
+    initialize,
+    ApiClient,
+    CursorFlow,
+    CopilotModal,     // Will be removed/refactored
+    OnboardingModal,
+    FlowExecutionTracker
+    // Add other exports from './types' if they need to be directly on window.Hyphenbox.types
+  };
 }
-*/

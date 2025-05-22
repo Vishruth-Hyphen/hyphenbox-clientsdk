@@ -793,102 +793,82 @@ export class OnboardingModal {
   // --- NEW HELPER METHODS ---
 
   private static createHeaderTitleElement(text: string): HTMLElement {
-    const title = document.createElement('h2');
-    title.textContent = text;
-    title.style.cssText = `
-      margin: 0;
-      font-size: 20px;
-      font-weight: 600;
-      color: #1a1a1a;
-      text-align: center;
-    `;
-    return title;
+    const titleElement = document.createElement('h2');
+    titleElement.textContent = text;
+    Object.assign(titleElement.style, {
+        margin: '0',
+        fontSize: '22px',
+        fontWeight: '600',
+        color: this.theme?.text_color || '#1a1a1a',
+        textAlign: 'center' as 'center',
+        flexGrow: '1'
+    });
+    return titleElement;
   }
 
-  private static createDynamicHeader(checklist?: OnboardingChecklist, defaultTitle: string = '', onBack?: () => void): HTMLElement {
-    const headerContainer = document.createElement('div');
-    headerContainer.style.cssText = `
-      padding: 20px 24px 16px 24px; /* Adjust padding */
+  /**
+   * Creates a dynamic header for the onboarding modal or inline view.
+   * If onBack is provided (i.e., hosted scenario), it will not render its own back button visual,
+   * as the host (CopilotModal) is expected to provide it and use the onBack callback.
+   */
+  private static createDynamicHeader(
+    checklist?: OnboardingChecklist, 
+    defaultTitle: string = '', 
+    onBack?: () => void // If onBack is present, we assume it's hosted and won't create a visual back button here
+  ): HTMLElement {
+    const headerDiv = document.createElement('div');
+    headerDiv.style.cssText = `
       display: flex;
-      flex-direction: column; /* Stack logo/title/desc vertically */
-      align-items: center; /* Center items by default */
-      border-bottom: 1px solid #f0f0f0; /* Separator line */
-      text-align: center; /* Center text for title/desc */
+      align-items: center;
+      justify-content: space-between; /* Ensures title is centered if no back button visible */
+      padding: 0 0 16px 0; /* Bottom padding for separation */
+      border-bottom: 1px solid #e0e0e0;
+      margin-bottom: 20px;
+      min-height: 30px; /* Ensure header has some height */
     `;
 
-    let logoUrl = checklist?.appearance_settings?.logo_url;
-    let titleText = checklist?.title_text || defaultTitle;
-    let descriptionText = checklist?.appearance_settings?.description;
+    let titleText = defaultTitle;
+    if (checklist) {
+      titleText = checklist.name;
+    } else if (!defaultTitle) {
+      // Fallback title if no checklist and no default title
+      titleText = 'Onboarding Checklists';
+    }
 
-    // If onBack is provided, create a row for back button and centered title
-    if (onBack) {
-      const topRow = document.createElement('div');
-      topRow.style.cssText = 'display: flex; align-items: center; width: 100%; margin-bottom: 12px;';
+    const titleElement = this.createHeaderTitleElement(titleText);
 
-      const backButton = document.createElement('button');
-      backButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`;
-      backButton.setAttribute('aria-label', 'Back');
-      backButton.style.cssText = 'background: none; border: none; padding: 5px; cursor: pointer; color: #555; display: flex; align-items: center;';
-      backButton.addEventListener('click', onBack);
-      topRow.appendChild(backButton);
-
-      // Only show title if it exists (not empty string)
-      if (titleText) {
-        const titleElement = this.createHeaderTitleElement(titleText);
-        titleElement.style.flexGrow = '1';
-        titleElement.style.textAlign = 'center'; // Ensure title is centered
-        // Add padding to the right of the title to balance the back button space, making the title appear truly centered.
-        titleElement.style.paddingRight = backButton.offsetWidth > 0 ? `${backButton.offsetWidth}px` : '30px'; // Adjust based on actual back button width or a fallback
+    // If NOT hosted (i.e., no onBack provided by a host like CopilotModal), create a standalone back button.
+    // For the renderInExistingModal scenario where CopilotModal provides the onBack, 
+    // CopilotModal itself will render the back button in its persistent header.
+    if (!onBack) { 
+        const backButtonPlaceholder = document.createElement('div'); // Placeholder for alignment
+        backButtonPlaceholder.style.width = '40px'; // approx width of a back button
+        headerDiv.appendChild(backButtonPlaceholder);
+        headerDiv.appendChild(titleElement); // Title in middle
         
-        topRow.appendChild(titleElement);
-      } else {
-        // Add spacer element to maintain back button position if no title
-        const spacer = document.createElement('div');
-        spacer.style.flexGrow = '1';
-        topRow.appendChild(spacer);
-      }
-
-      headerContainer.appendChild(topRow);
-      // Subsequent elements (logo, description) will be centered below this row
-      headerContainer.style.alignItems = 'center'; // Ensure items below topRow are centered
-
+        // We could also add a close button here if it's a standalone modal and not hosted
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '&times;'; // Simple X
+        Object.assign(closeButton.style, {
+            background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', 
+            color: '#888', cursor: 'pointer', padding: '0 10px', lineHeight: '1'
+        });
+        closeButton.setAttribute('aria-label', 'Close');
+        closeButton.onclick = () => this.closeModal(); // This assumes closeModal is for the standalone modal
+        headerDiv.appendChild(closeButton);
     } else {
-        // If no onBack, just add logo, title, description centered
-        if (logoUrl) {
-            const logoImg = document.createElement('img');
-            logoImg.src = logoUrl;
-            logoImg.alt = "Logo";
-            logoImg.style.cssText = `
-                max-height: 40px; /* Adjust as needed */
-                max-width: 150px; /* Adjust as needed */
-                margin-bottom: 12px;
-            `;
-            headerContainer.appendChild(logoImg);
-        }
-        
-        // Only show title if it exists (not empty string)
-        if (titleText) {
-          const titleElement = this.createHeaderTitleElement(titleText);
-          headerContainer.appendChild(titleElement);
-        }
+        // Hosted scenario: CopilotModal handles the back button visually and uses the onBack callback.
+        // We just add the title here, centered by justify-content: space-between on headerDiv if needed,
+        // or let flex-grow on titleElement handle it if it's the only child for alignment.
+        // To ensure title is centered when only title is present:
+        const leftPlaceholder = document.createElement('div'); leftPlaceholder.style.width = '0px'; // Adjust if needed for alignment with Copilot's back button
+        const rightPlaceholder = document.createElement('div'); rightPlaceholder.style.width = '0px';
+
+        headerDiv.appendChild(leftPlaceholder); // For centering title with flexbox
+        headerDiv.appendChild(titleElement);
+        headerDiv.appendChild(rightPlaceholder);
     }
 
-    if (descriptionText) {
-        const descriptionElement = document.createElement('p');
-        descriptionElement.textContent = descriptionText;
-        descriptionElement.style.cssText = `
-            font-size: 15px;
-            color: #666;
-            margin-top: ${titleText ? '12px' : '0'}; /* Increased space between title and description */
-            margin-bottom: 8px; /* Add bottom margin */
-            max-width: 90%;
-            text-align: center; 
-            font-weight: 400; /* Normal weight to differentiate from title */
-            line-height: 1.4; /* Improved line spacing */
-        `;
-        headerContainer.appendChild(descriptionElement);
-    }
-
-    return headerContainer;
+    return headerDiv;
   }
 } 
