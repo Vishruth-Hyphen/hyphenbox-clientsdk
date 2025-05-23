@@ -331,6 +331,16 @@ export class OnboardingModal {
           document.body.removeChild(overlay);
         }
         this.activeModal = null;
+        
+        // Trigger full cleanup after modal is closed to clean up any
+        // UI elements that were skipped during flow completion
+        try {
+          if ((window as any).CursorFlowUI) {
+            (window as any).CursorFlowUI.cleanupAllUI(false, true);
+          }
+        } catch (error) {
+          console.warn('[OnboardingModal] Error during post-modal cleanup:', error);
+        }
       }, 300);
     } else if (overlay && document.body.contains(overlay)) {
       document.body.removeChild(overlay);

@@ -6,6 +6,10 @@ export class ApiClient {
   private apiKey: string;
   private userId: string;
   
+  // Simple cache for onboarding checklists
+  private checklistsCache: { data: any[], timestamp: number } | null = null;
+  private readonly CACHE_DURATION = 30000; // 30 seconds
+  
   constructor(baseUrl: string, apiKey: string, userId: string) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
@@ -169,13 +173,42 @@ export class ApiClient {
    * @returns Array of onboarding checklists with user progress
    */
   async getOnboardingChecklists(): Promise<any[]> {
+    // Check cache first
+    const now = Date.now();
+    if (this.checklistsCache && (now - this.checklistsCache.timestamp) < this.CACHE_DURATION) {
+      console.log('[API Client] Using cached onboarding checklists');
+      return this.checklistsCache.data;
+    }
+
     try {
-      console.log('[API Client] Fetching onboarding checklists');
+      console.log('[API Client] Fetching onboarding checklists from server');
       const response = await this.client.get('/api/sdk/onboarding-checklists');
+      console.log('[API Client] Onboarding checklists response:', response.data);
+      
+      // Cache the result
+      this.checklistsCache = {
+        data: response.data,
+        timestamp: now
+      };
+      
       return response.data;
     } catch (error) {
       console.error('Failed to fetch onboarding checklists:', error);
-      return [];
+      
+      // Instead of returning empty array, throw proper error for UI to handle
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 404) {
+          throw new Error('No onboarding checklists found for this organization');
+        } else if (error.response?.status === 500) {
+          throw new Error('Server error while fetching onboarding checklists. Please try again.');
+        } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          throw new Error('Request timed out. Please check your connection and try again.');
+        } else {
+          throw new Error(`Failed to fetch onboarding checklists: ${error.response?.data?.error || error.message}`);
+        }
+      }
+      
+      throw new Error('Network error while fetching onboarding checklists');
     }
   }
 
@@ -245,6 +278,13 @@ export class ApiClient {
     try {
       console.log(`[API Client] Completing flow execution: ${executionId}`);
       const response = await this.client.put(`/api/sdk/flow-executions/${executionId}/complete`, {});
+      
+      if (response.data.success) {
+        // Clear onboarding cache to ensure fresh completion status on next load
+        this.clearOnboardingCache();
+        console.log(`[API Client] Flow execution completed and cache cleared: ${executionId}`);
+      }
+      
       return response.data.success;
     } catch (error) {
       console.error('Failed to complete flow execution:', error);
@@ -285,5 +325,14 @@ export class ApiClient {
       console.error('Failed to abandon flow execution:', error);
       return false;
     }
+  }
+
+  /**
+   * Clear the onboarding checklists cache
+   * Call this after flow completion to ensure fresh data is fetched
+   */
+  clearOnboardingCache(): void {
+    console.log('[API Client] Clearing onboarding checklists cache');
+    this.checklistsCache = null;
   }
 }

@@ -1203,6 +1203,8 @@ export class CursorFlowUI {
         notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
         notification.style.left = '50%';
         notification.style.transform = 'translateX(-50%)';
+        notification.style.right = 'auto';
+        notification.style.top = 'auto';
       } else {
         // For copilot and start buttons, position to the side with best space
         const spaceRight = viewportWidth - buttonRect.right;
@@ -1210,36 +1212,52 @@ export class CursorFlowUI {
         const spaceAbove = buttonRect.top;
         const spaceBelow = viewportHeight - buttonRect.bottom;
 
+        // Estimate notification height (including buttons if present)
+        const estimatedHeight = notification.querySelector('.hyphen-notification button') ? 120 : 80;
+
         // Prefer positioning to the right if there's enough space
         if (spaceRight >= 320) { // 300px notification + 20px margin
-          notification.style.top = `${buttonRect.top}px`;
+          // Ensure notification doesn't go below viewport
+          const topPosition = Math.max(10, Math.min(buttonRect.top, viewportHeight - estimatedHeight - 10));
+          notification.style.top = `${topPosition}px`;
           notification.style.left = `${buttonRect.right + 10}px`;
           notification.style.transform = 'none';
+          notification.style.right = 'auto';
+          notification.style.bottom = 'auto';
         }
         // Otherwise try left
         else if (spaceLeft >= 320) {
-          notification.style.top = `${buttonRect.top}px`;
+          const topPosition = Math.max(10, Math.min(buttonRect.top, viewportHeight - estimatedHeight - 10));
+          notification.style.top = `${topPosition}px`;
           notification.style.right = `${viewportWidth - buttonRect.left + 10}px`;
           notification.style.left = 'auto';
           notification.style.transform = 'none';
+          notification.style.bottom = 'auto';
         }
-        // Try above
-        else if (spaceAbove >= 100) {
+        // Try above if there's enough space
+        else if (spaceAbove >= estimatedHeight + 20) {
           notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
           notification.style.left = `${buttonRect.left}px`;
           notification.style.transform = 'none';
+          notification.style.right = 'auto';
+          notification.style.top = 'auto';
         }
-        // Try below
-        else if (spaceBelow >= 100) {
+        // Try below if there's enough space
+        else if (spaceBelow >= estimatedHeight + 20) {
           notification.style.top = `${buttonRect.bottom + 10}px`;
           notification.style.left = `${buttonRect.left}px`;
           notification.style.transform = 'none';
+          notification.style.right = 'auto';
+          notification.style.bottom = 'auto';
         }
-        // Fallback: position at button level, centered
+        // Fallback: center horizontally and position safely in viewport
         else {
-          notification.style.top = `${buttonRect.top}px`;
+          // Position in the center of the viewport, but ensure it's fully visible
+          notification.style.top = '50%';
           notification.style.left = '50%';
-          notification.style.transform = 'translateX(-50%)';
+          notification.style.transform = 'translate(-50%, -50%)';
+          notification.style.right = 'auto';
+          notification.style.bottom = 'auto';
         }
       }
 
@@ -1255,11 +1273,35 @@ export class CursorFlowUI {
       });
     } else {
       // Ultimate fallback position if no buttons found
-      notification.style.bottom = '20px';
-      notification.style.right = '20px';
-      notification.style.left = 'auto';
-      notification.style.transform = 'none';
-      console.log('[NOTIFICATION] No active button found, using fallback position');
+      // Ensure notification is fully visible by measuring its height
+      const notificationRect = notification.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      
+      // Check if notification has buttons (like redirect notifications)
+      const hasButtons = notification.querySelector('button') !== null;
+      const estimatedHeight = hasButtons ? 120 : 80; // Estimate based on content
+      
+      // Position to ensure full visibility
+      const bottomMargin = Math.max(20, estimatedHeight - (viewportHeight - 150)); // Ensure we don't go off-screen
+      
+      // For notifications with important action buttons (like redirect), center them
+      if (hasButtons) {
+        notification.style.top = '50%';
+        notification.style.left = '50%';
+        notification.style.transform = 'translate(-50%, -50%)';
+        notification.style.right = 'auto';
+        notification.style.bottom = 'auto';
+        console.log('[NOTIFICATION] No active button found, centering notification with buttons');
+      } else {
+        // For simple notifications, use bottom-right but ensure visibility
+        notification.style.bottom = `${bottomMargin}px`;
+        notification.style.right = '20px';
+        notification.style.left = 'auto';
+        notification.style.transform = 'none';
+        notification.style.top = 'auto';
+        console.log('[NOTIFICATION] No active button found, using safe bottom-right position');
+      }
     }
   }
 
@@ -1501,6 +1543,127 @@ export class CursorFlowUI {
 
   // Add a new method to properly clean up all UI components
   static cleanupAllUI(keepCursor: boolean = false, keepNotifications: boolean = true): void {
+    // Check if there are active modals that we should not interfere with
+    const activeModals = [
+      document.getElementById('hyphen-search-overlay'), // CopilotModal
+      document.getElementById('hyphen-onboarding-overlay'), // OnboardingModal
+    ].filter(modal => modal !== null);
+
+    const hasActiveModals = activeModals.length > 0;
+
+    if (hasActiveModals) {
+      console.log('[CLEANUP-DEBUG] Active modal detected, performing limited cleanup to avoid interference');
+      
+      // Only clean up flow-specific elements when modals are active
+      // This prevents interfering with modal event listeners and DOM structure
+      
+      // Clean up cursor (if not keeping it)
+      if (!keepCursor) {
+        const cursorWrapper = document.getElementById('hyphenbox-cursor-wrapper') as EnhancedHTMLElement;
+        if (cursorWrapper) {
+          try {
+            // Clean up cursor-specific observers and handlers
+            if (cursorWrapper['observer']) {
+              cursorWrapper['observer'].disconnect();
+              cursorWrapper['observer'] = null;
+            }
+            if (cursorWrapper['scrollHandler']) {
+              window.removeEventListener('scroll', cursorWrapper['scrollHandler']);
+              window.removeEventListener('resize', cursorWrapper['scrollHandler']);
+              cursorWrapper['scrollHandler'] = null;
+            }
+            if (cursorWrapper['resizeHandler']) {
+              window.removeEventListener('resize', cursorWrapper['resizeHandler']);
+              cursorWrapper['resizeHandler'] = null;
+            }
+            if (cursorWrapper['positionInterval']) {
+              clearInterval(cursorWrapper['positionInterval']);
+            }
+            cursorWrapper['currentElement'] = null;
+            
+            if (cursorWrapper.parentNode) {
+              cursorWrapper.parentNode.removeChild(cursorWrapper);
+            }
+          } catch (error) {
+            console.warn('Error cleaning up cursor:', error);
+          }
+        }
+      }
+      
+      // Clean up highlights (flow-specific, unlikely to conflict with modals)
+      const highlights = document.querySelectorAll('.hyphen-highlight');
+      highlights.forEach(highlight => {
+        try {
+          if ((highlight as any)._scrollResizeHandler) {
+            window.removeEventListener('scroll', (highlight as any)._scrollResizeHandler);
+            window.removeEventListener('resize', (highlight as any)._scrollResizeHandler);
+            window.removeEventListener('orientationchange', (highlight as any)._scrollResizeHandler);
+            (highlight as any)._scrollResizeHandler = null;
+          }
+          
+          if ((highlight as any)._observer) {
+            (highlight as any)._observer.disconnect();
+            (highlight as any)._observer = null;
+          }
+          
+          if ((highlight as any)._frameRequestId) {
+            cancelAnimationFrame((highlight as any)._frameRequestId);
+            (highlight as any)._frameRequestId = null;
+          }
+          if ((highlight as any)._mutationDebounceTimeout) {
+            clearTimeout((highlight as any)._mutationDebounceTimeout);
+            (highlight as any)._mutationDebounceTimeout = null;
+          }
+          
+          (highlight as any)._targetElement = null;
+          
+          if (highlight.parentNode) {
+            highlight.parentNode.removeChild(highlight);
+          }
+        } catch (error) {
+          console.warn('Error cleaning up highlight:', error);
+        }
+      });
+      
+      // Clean up text popup (flow-specific)
+      const textPopup = document.getElementById('hyphenbox-text-popup');
+      if (textPopup && textPopup.parentNode) {
+        textPopup.parentNode.removeChild(textPopup);
+      }
+      
+      // Clean up guidance card (flow-specific)
+      const guidanceCard = document.getElementById('hyphen-guidance-card') as EnhancedGuidanceCard;
+      if (guidanceCard) {
+        if (guidanceCard._observer) {
+          guidanceCard._observer.disconnect();
+          guidanceCard._observer = undefined;
+        }
+        if (guidanceCard._scrollResizeHandler) {
+          window.removeEventListener('scroll', guidanceCard._scrollResizeHandler);
+          window.removeEventListener('resize', guidanceCard._scrollResizeHandler);
+          window.removeEventListener('orientationchange', guidanceCard._scrollResizeHandler);
+          guidanceCard._scrollResizeHandler = undefined;
+        }
+        if (guidanceCard._rAfId) {
+          cancelAnimationFrame(guidanceCard._rAfId);
+          guidanceCard._rAfId = undefined;
+        }
+        if (guidanceCard._mutationDebounceTimeout) {
+          clearTimeout(guidanceCard._mutationDebounceTimeout);
+          guidanceCard._mutationDebounceTimeout = undefined;
+        }
+        if (guidanceCard.parentNode) {
+          guidanceCard.parentNode.removeChild(guidanceCard);
+        }
+      }
+      
+      console.log('[CLEANUP-DEBUG] Limited cleanup completed while modal is active');
+      return;
+    }
+
+    // Full cleanup when no modals are active (original behavior)
+    console.log('[CLEANUP-DEBUG] No active modals, performing full cleanup');
+
     // Clean up the guidance container and its contents
     const container = document.querySelector('.hyphen-guidance-container') as EnhancedHTMLElement;
     if (container) {
@@ -1658,7 +1821,7 @@ export class CursorFlowUI {
         });
     }
 
-    console.log('[CLEANUP-DEBUG] UI elements cleaned up', keepCursor ? '(keeping cursor)' : '(including cursor)', keepNotifications ? '(keeping notifications)' : '(including notifications)');
+    console.log('[CLEANUP-DEBUG] Full UI cleanup completed', keepCursor ? '(keeping cursor)' : '(including cursor)', keepNotifications ? '(keeping notifications)' : '(including notifications)');
   }
 
   // Add this as a new method in the CursorFlowUI class

@@ -173,7 +173,7 @@ export default class CursorFlow {
       if (textSpan) textSpan.textContent = 'Stop Guide';
       
       this.startButton.classList.add('hyphen-stop-guide-active'); 
-      this.startButton.style.backgroundColor = this.options.theme?.brand_color || '#dc3545';
+      // this.startButton.style.backgroundColor = this.options.theme?.brand_color || '#dc3545'; // Prevent background color change
       this.startButtonIsStopButton = true;
     }
 

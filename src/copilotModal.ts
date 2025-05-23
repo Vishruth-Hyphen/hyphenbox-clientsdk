@@ -147,16 +147,20 @@ export class CopilotModal {
         if (!this.modalHeaderContainer) return;
         this.modalHeaderContainer.innerHTML = ''; // Clear previous header
 
-        const titleEl = document.createElement('h2');
-        titleEl.textContent = viewTitle;
-        Object.assign(titleEl.style, {
-            color: this.theme?.text_color || '#333',
-            margin: '0', 
-            fontSize: showBackButton ? '20px' : '24px', 
-            fontWeight: '600',
-            textAlign: showBackButton ? 'left' : 'center' as 'center',
-            flexGrow: '1'
-        });
+        // Only create title element if viewTitle is not empty
+        let titleEl: HTMLElement | null = null;
+        if (viewTitle.trim()) {
+            titleEl = document.createElement('h2');
+            titleEl.textContent = viewTitle;
+            Object.assign(titleEl.style, {
+                color: this.theme?.text_color || '#333',
+                margin: '0', 
+                fontSize: showBackButton ? '20px' : '24px', 
+                fontWeight: '600',
+                textAlign: showBackButton ? 'left' : 'center' as 'center',
+                flexGrow: '1'
+            });
+        }
 
         if (showBackButton) {
             const backButton = document.createElement('button');
@@ -166,16 +170,21 @@ export class CopilotModal {
             backButton.onclick = () => {
                 this.renderSearchView(); 
             };
-            //this.modalHeaderContainer.appendChild(backButton); // Append to headerRow instead
 
             const headerRow = document.createElement('div');
             headerRow.style.display = 'flex';
             headerRow.style.alignItems = 'center';
-            headerRow.appendChild(backButton); // Now backButton is guaranteed to exist here
-            headerRow.appendChild(titleEl);
+            headerRow.appendChild(backButton);
+            
+            // Only add title if it exists
+            if (titleEl) {
+                headerRow.appendChild(titleEl);
+            }
+            
             this.modalHeaderContainer.appendChild(headerRow);
-        } else {
-            this.modalHeaderContainer.appendChild(titleEl); // No back button, just title
+        } else if (titleEl) {
+            // No back button, just title (only if title exists)
+            this.modalHeaderContainer.appendChild(titleEl);
         }
     }
 
@@ -263,16 +272,39 @@ export class CopilotModal {
         leftSide.style.cssText = `display: flex; gap: 12px; align-items: center;`;
 
         const allGuidesButton = document.createElement('button');
-        // ... allGuidesButton styling and click handler ...
         allGuidesButton.textContent = 'View All Guides';
         Object.assign(allGuidesButton.style, { /* styles */ 
             background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
             fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
         });
         allGuidesButton.onclick = () => {
-            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) return;
+            // Access modal containers dynamically instead of capturing in closure
+            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
+                console.warn('[CopilotModal] Modal containers not available for View All Guides - reinitializing modal');
+                // Containers are missing, probably cleared by cleanup. Reinitialize modal.
+                setTimeout(() => {
+                    this.showSearchModal(); // Reopen modal
+                    setTimeout(() => {
+                        // Retry the action after modal is reinitialized
+                        if (this.modalMainContentContainer && this.modalHeaderContainer && this.apiClient) {
+                            this.currentView = 'list';
+                            this.renderPersistentHeader('All Guides', true);
+                            ViewAllGuidesModal.renderInContainer(
+                                this.modalMainContentContainer, 
+                                this.apiClient, 
+                                (guideId: string) => { 
+                                    this.closeSearchModal(); 
+                                    this.onGuideFound(guideId); 
+                                }, 
+                                () => { this.renderSearchView(); }
+                            );
+                        }
+                    }, 100); // Small delay for modal to fully initialize
+                }, 50);
+                return;
+            }
             this.currentView = 'list';
-            this.renderPersistentHeader('All Guides', true); // Show header with back button
+            this.renderPersistentHeader('All Guides', true);
             ViewAllGuidesModal.renderInContainer(
                 this.modalMainContentContainer, 
                 this.apiClient, 
@@ -280,25 +312,39 @@ export class CopilotModal {
                     this.closeSearchModal(); 
                     this.onGuideFound(guideId); 
                 }, 
-                () => { this.renderSearchView(); }, // Back action for ViewAllGuides is to render search view
-                this.theme
+                () => { this.renderSearchView(); }
             );
         };
         leftSide.appendChild(allGuidesButton);
             
         const onboardingButton = document.createElement('button');
-        // ... onboardingButton styling and click handler ...
         onboardingButton.textContent = 'Onboarding';
         Object.assign(onboardingButton.style, { /* styles */ 
             background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
             fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
         });
         onboardingButton.onclick = () => {
-            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) return;
+            // Access modal containers dynamically instead of capturing in closure
+            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
+                console.warn('[CopilotModal] Modal containers not available for Onboarding - reinitializing modal');
+                // Containers are missing, probably cleared by cleanup. Reinitialize modal.
+                setTimeout(() => {
+                    this.showSearchModal(); // Reopen modal
+                    setTimeout(() => {
+                        // Retry the action after modal is reinitialized
+                        if (this.modalMainContentContainer && this.modalHeaderContainer && this.apiClient) {
+                            this.currentView = 'onboarding';
+                            this.renderPersistentHeader('', true);
+                            OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
+                                this.renderSearchView(); 
+                            });
+                        }
+                    }, 100); // Small delay for modal to fully initialize
+                }, 50);
+                return;
+            }
             this.currentView = 'onboarding';
-            this.renderPersistentHeader('Onboarding', true); // Show header with back button
-            // OnboardingModal's renderInExistingModal already handles its internal content structure.
-            // The onBack passed to it will be used by CopilotModal's back button.
+            this.renderPersistentHeader('', true);
             OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
                 this.renderSearchView(); 
             });
@@ -334,16 +380,25 @@ export class CopilotModal {
                 this.activeModal = null;
                 this.modalHeaderContainer = null;      // Clear ref
                 this.modalMainContentContainer = null; // Clear ref
-                this.modalFooterContainer = null;    // Clear ref
+                this.modalFooterContainer = null;      // Clear ref
+                
+                // Trigger full cleanup after modal is closed to clean up any
+                // UI elements that were skipped during flow completion
+                try {
+                    if ((window as any).CursorFlowUI) {
+                        (window as any).CursorFlowUI.cleanupAllUI(false, true);
+                    }
+                } catch (error) {
+                    console.warn('[CopilotModal] Error during post-modal cleanup:', error);
+                }
             }, 300);
         } else if (overlay && document.body.contains(overlay)) {
             document.body.removeChild(overlay);
         }
         this.activeModal = null;
-        this.currentView = 'search';
-        this.modalHeaderContainer = null; 
-        this.modalMainContentContainer = null;
-        this.modalFooterContainer = null;
+        this.modalHeaderContainer = null;      // Clear ref
+        this.modalMainContentContainer = null; // Clear ref
+        this.modalFooterContainer = null;      // Clear ref
     }
 
     private static async handleSearch(query: string) {
