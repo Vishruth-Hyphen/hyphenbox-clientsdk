@@ -480,50 +480,63 @@ export class OnboardingModal {
    * Create a checklist element
    */
   private static createChecklistElement(checklist: OnboardingChecklist): HTMLElement {
-    const checklistEl = document.createElement('div');
-    checklistEl.className = 'onboarding-checklist';
-    checklistEl.style.cssText = `
+    const mainContainer = document.createElement('div');
+    mainContainer.className = 'onboarding-checklist-content';
+    // No border here, border will be on the flowsList a.ka. the "box"
+    mainContainer.style.cssText = ` 
+      display: flex;
+      flex-direction: column;
+      gap: 16px; /* Space between description and flows box */
+    `;
+
+    // Description (plain text, no background, directly under header line)
+    if (checklist.description) {
+      const descriptionEl = document.createElement('p');
+      descriptionEl.textContent = checklist.description;
+      descriptionEl.style.cssText = `
+        margin: 0;
+        padding: 0 16px; /* Horizontal padding to align with modal content */
+        font-size: 14px;
+        color: #666;
+        line-height: 1.4;
+        background-color: transparent;
+      `;
+      mainContainer.appendChild(descriptionEl);
+    }
+    
+    // Checklist flows (this will be the "box")
+    const flowsList = document.createElement('div');
+    flowsList.className = 'onboarding-flows-box';
+    flowsList.style.cssText = `
       border: 1px solid #e0e0e0;
       border-radius: 8px;
       overflow: hidden;
-    `;
-    
-    // Checklist header
-    const header = document.createElement('div');
-    header.style.cssText = `
-      padding: 16px;
-      background-color: #f8f9fa;
-      border-bottom: 1px solid #e0e0e0;
-    `;
-    
-    const headerTitle = document.createElement('h3');
-    headerTitle.textContent = checklist.title_text || checklist.name;
-    headerTitle.style.cssText = `
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #333;
-    `;
-    
-    header.appendChild(headerTitle);
-    
-    // Checklist flows
-    const flowsList = document.createElement('div');
-    flowsList.style.cssText = `
       display: flex;
       flex-direction: column;
     `;
     
-    checklist.flows.forEach((flow, index) => {
-      const flowItem = this.createFlowItem(flow, index === checklist.flows.length - 1);
-      flowsList.appendChild(flowItem);
-    });
+    if (checklist.flows && checklist.flows.length > 0) {
+      checklist.flows.forEach((flow, index) => {
+        const flowItem = this.createFlowItem(flow, index === checklist.flows.length - 1);
+        flowsList.appendChild(flowItem);
+      });
+    } else {
+      // Optional: Add a message if there are no flows in this checklist
+      const noFlowsMessage = document.createElement('div');
+      noFlowsMessage.textContent = 'No steps in this checklist yet.';
+      noFlowsMessage.style.cssText = `
+        padding: 16px;
+        text-align: center;
+        font-style: italic;
+        color: #888;
+        font-size: 13px;
+      `;
+      flowsList.appendChild(noFlowsMessage);
+    }
     
-    // Assemble checklist
-    checklistEl.appendChild(header);
-    checklistEl.appendChild(flowsList);
+    mainContainer.appendChild(flowsList);
     
-    return checklistEl;
+    return mainContainer;
   }
 
   /**
@@ -608,7 +621,7 @@ export class OnboardingModal {
       `;
     }
     
-    // Flow details
+    // Flow details (title only)
     const flowDetails = document.createElement('div');
     flowDetails.style.cssText = `
       flex-grow: 1;
@@ -624,16 +637,7 @@ export class OnboardingModal {
     
     flowDetails.appendChild(flowTitle);
     
-    if (flow.flow_description) {
-      const flowDesc = document.createElement('div');
-      flowDesc.textContent = flow.flow_description;
-      flowDesc.style.cssText = `
-        font-size: 12px;
-        color: #777;
-        margin-top: 2px;
-      `;
-      flowDetails.appendChild(flowDesc);
-    }
+    // Remove flow description - only show title
     
     // Assemble flow item
     flowItem.appendChild(checkbox);
@@ -820,54 +824,69 @@ export class OnboardingModal {
     headerDiv.style.cssText = `
       display: flex;
       align-items: center;
-      justify-content: space-between; /* Ensures title is centered if no back button visible */
-      padding: 0 0 16px 0; /* Bottom padding for separation */
+      justify-content: space-between; 
+      padding: 16px; /* Adjusted padding for more space */
       border-bottom: 1px solid #e0e0e0;
-      margin-bottom: 20px;
-      min-height: 30px; /* Ensure header has some height */
+      margin-bottom: 16px; /* Space below header */
+      min-height: 30px; 
+      position: relative; /* For absolute positioning of elements if needed */
     `;
 
     let titleText = defaultTitle;
     if (checklist) {
-      titleText = checklist.name;
+      titleText = checklist.title_text || checklist.name;
     } else if (!defaultTitle) {
-      // Fallback title if no checklist and no default title
       titleText = 'Onboarding Checklists';
     }
 
-    const titleElement = this.createHeaderTitleElement(titleText);
+    // Left side (Logo or back button for hosted)
+    const leftArea = document.createElement('div');
+    leftArea.style.cssText = 'display: flex; align-items: center; min-width: 40px;'; // min-width to balance close button
 
-    // If NOT hosted (i.e., no onBack provided by a host like CopilotModal), create a standalone back button.
-    // For the renderInExistingModal scenario where CopilotModal provides the onBack, 
-    // CopilotModal itself will render the back button in its persistent header.
+    if (onBack) {
+      // Hosted scenario: CopilotModal handles the back button visually and uses the onBack callback.
+      // We don't add a visual back button here, but this area could be used by the host.
+    } else if (checklist) {
+      const logoUrl = checklist.logo_url || this.theme?.logo_url;
+      if (logoUrl) {
+        const logo = document.createElement('img');
+        logo.src = logoUrl;
+        logo.alt = 'Logo';
+        logo.style.cssText = `
+          height: 24px;
+          width: auto;
+          border-radius: 4px;
+          flex-shrink: 0;
+        `;
+        logo.onerror = () => { logo.style.display = 'none'; };
+        leftArea.appendChild(logo);
+      }
+    }
+    headerDiv.appendChild(leftArea);
+
+    // Center (Title)
+    const titleElement = this.createHeaderTitleElement(titleText);
+    titleElement.style.textAlign = 'center';
+    titleElement.style.flexGrow = '1'; // Allow title to take up space and center
+    titleElement.style.margin = '0 10px'; // Add some horizontal margin to prevent touching sides
+    headerDiv.appendChild(titleElement);
+
+    // Right side (Close button or placeholder)
+    const rightArea = document.createElement('div');
+    rightArea.style.cssText = 'display: flex; align-items: center; min-width: 40px; justify-content: flex-end;';
+
     if (!onBack) { 
-        const backButtonPlaceholder = document.createElement('div'); // Placeholder for alignment
-        backButtonPlaceholder.style.width = '40px'; // approx width of a back button
-        headerDiv.appendChild(backButtonPlaceholder);
-        headerDiv.appendChild(titleElement); // Title in middle
-        
-        // We could also add a close button here if it's a standalone modal and not hosted
         const closeButton = document.createElement('button');
-        closeButton.innerHTML = '&times;'; // Simple X
+        closeButton.innerHTML = '&times;';
         Object.assign(closeButton.style, {
-            background: 'none', border: 'none', fontSize: '24px', fontWeight: 'bold', 
-            color: '#888', cursor: 'pointer', padding: '0 10px', lineHeight: '1'
+            background: 'none', border: 'none', fontSize: '28px', fontWeight: '300', 
+            color: '#888', cursor: 'pointer', padding: '0', lineHeight: '1', width:'24px', height:'24px'
         });
         closeButton.setAttribute('aria-label', 'Close');
-        closeButton.onclick = () => this.closeModal(); // This assumes closeModal is for the standalone modal
-        headerDiv.appendChild(closeButton);
-    } else {
-        // Hosted scenario: CopilotModal handles the back button visually and uses the onBack callback.
-        // We just add the title here, centered by justify-content: space-between on headerDiv if needed,
-        // or let flex-grow on titleElement handle it if it's the only child for alignment.
-        // To ensure title is centered when only title is present:
-        const leftPlaceholder = document.createElement('div'); leftPlaceholder.style.width = '0px'; // Adjust if needed for alignment with Copilot's back button
-        const rightPlaceholder = document.createElement('div'); rightPlaceholder.style.width = '0px';
-
-        headerDiv.appendChild(leftPlaceholder); // For centering title with flexbox
-        headerDiv.appendChild(titleElement);
-        headerDiv.appendChild(rightPlaceholder);
-    }
+        closeButton.onclick = () => this.closeModal();
+        rightArea.appendChild(closeButton);
+    } 
+    headerDiv.appendChild(rightArea);
 
     return headerDiv;
   }

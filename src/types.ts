@@ -112,12 +112,13 @@ export interface OnboardingChecklist {
   id: string;
   name: string;
   title_text: string;
+  description?: string;
+  logo_url?: string;
   is_active: boolean;
   flows: OnboardingFlow[];
   appearance_settings?: {
-    description?: string;
-    logo_url?: string;
-    // Other appearance settings could be added in the future
+    // Legacy settings can still be here for backward compatibility
+    [key: string]: any;
   };
 }
 
