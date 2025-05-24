@@ -282,7 +282,7 @@ export default class CursorFlow {
         }
         
         let needsAutoStart = false;
-        let redirectGuideId: string | null = null;
+        let autoStartGuideId: string | null = null; // Renamed from redirectGuideId
         
         const savedState = StateManager.restore();
         if (savedState) {
@@ -298,24 +298,19 @@ export default class CursorFlow {
         try {
           const fetchedTheme = await this.apiClient.getOrganizationTheme();
           if (fetchedTheme) {
-            this.options.theme = { ...this.options.theme, ...fetchedTheme }; 
+            // Convert null values to undefined for TypeScript compatibility
+            const normalizedTheme = {
+              ...fetchedTheme,
+              button_position: fetchedTheme.button_position || undefined,
+              button_text: fetchedTheme.button_text || undefined,
+            };
+            this.options.theme = { ...this.options.theme, ...normalizedTheme }; 
             this.debugLog('Successfully fetched and merged theme:', this.options.theme);
           } else {
             this.debugLog('Theme fetch returned null or failed. Using default/existing theme options.');
           }
         } catch (themeError) {
           console.error('Error fetching organization theme during init:', themeError);
-        }
-        
-        try {
-          redirectGuideId = localStorage.getItem('hyphen_redirect_guide_id');
-          if (redirectGuideId) {
-            console.log('Found guide requiring redirect to auto-start:', redirectGuideId);
-            localStorage.removeItem('hyphen_redirect_guide_id');
-            needsAutoStart = true;
-          }
-        } catch (err) {
-          console.error('Error checking for redirect guide:', err);
         }
         
         await this.fetchGuides();
@@ -334,15 +329,7 @@ export default class CursorFlow {
           }
         });
         
-        if (needsAutoStart && redirectGuideId) {
-          setTimeout(() => {
-            console.log('Executing auto-start for redirect guide:', redirectGuideId);
-            this.operationToken = this.generateToken();
-            const currentToken = this.operationToken;
-            this.setIsPlaying(true);
-            this.retrieveGuideData(redirectGuideId, currentToken);
-          }, 1000); 
-        } else if (this.state.isPlaying && this.state.recordingId) {
+        if (this.state.isPlaying && this.state.recordingId) {
           this.setIsPlaying(true);
           console.log('Guide is active from restored state, loading recording');
           await this.loadRecording(this.state.recordingId);
@@ -378,9 +365,13 @@ export default class CursorFlow {
         return;
       }
       
+      // Use button text from theme if available, fallback to options.buttonText, then to default
+      const buttonText = this.options.theme?.button_text || this.options.buttonText || 'Help & Guides';
+      console.log('[CURSOR-FLOW-DEBUG] Creating new start button with text:', buttonText);
       console.log('[CURSOR-FLOW-DEBUG] Creating new start button with theme:', this.options.theme);
+      
       this.startButton = CursorFlowUI.createStartButton(
-          this.options.buttonText || 'Guides',
+          buttonText,
           this.options.theme?.buttonColor || '#007bff',
           this.handleToggleClick,
           this.options.theme || {}
@@ -414,7 +405,11 @@ export default class CursorFlow {
               this.startButton.appendChild(textSpan); 
             }
         }
-        textSpan.textContent = this.options.buttonText || 'Help & Guides';
+        
+        // Use button text from theme if available, fallback to options.buttonText, then to default
+        const buttonText = this.options.theme?.button_text || this.options.buttonText || 'Help & Guides';
+        textSpan.textContent = buttonText;
+        
         this.startButton.classList.remove('hyphen-stop-guide-active');
         this.startButton.style.backgroundColor = '#ffffff';
       } else {
@@ -463,7 +458,8 @@ export default class CursorFlow {
       this.isDropdownOpen = false;
       const existingDropdown = document.getElementById('hyphen-guides-dropdown');
       if (existingDropdown) existingDropdown.remove();
-      try { localStorage.removeItem('hyphen_redirect_guide_id'); } catch (err) { console.warn('Failed to clear redirect ID on stop:', err); }
+      // No longer need to remove 'hyphen_redirect_guide_id' from localStorage here as it's not being set.
+      // try { localStorage.removeItem('hyphen_redirect_guide_id'); } catch (err) { console.warn('Failed to clear redirect ID on stop:', err); }
       if (this.thinkingIndicator) { CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator); this.thinkingIndicator = null; }
       this.isLoadingGuide = false;
       this.stopValidationLoop();
@@ -579,7 +575,7 @@ export default class CursorFlow {
           const hasUrlToCheck = !!stepUrl || !!stepPath;
           
           // Only show redirect if there's a URL to redirect to
-          const redirectUrl = stepUrl || (stepPath ? stepPath : null);
+          const targetUrl = stepUrl || (stepPath ? new URL(stepPath, window.location.origin).href : null);
           
           // Check URL matching - use URL first, then fall back to path
           const isUrlMatch = stepUrl ? RobustElementFinder.compareUrls(stepUrl, window.location.href) : false;
@@ -589,7 +585,7 @@ export default class CursorFlow {
             hasUrlToCheck, 
             stepUrl, 
             stepPath, 
-            redirectUrl, 
+            targetUrl, 
             isUrlMatch, 
             isPathMatch,
             currentPath: window.location.pathname
@@ -598,7 +594,7 @@ export default class CursorFlow {
           // Hide thinking indicator if we're showing a notification
           if (hasUrlToCheck && !isUrlMatch && !isPathMatch) {
             // User is not on the correct starting page
-            this.debugLog('URL CHECK FAILED: User is not on the correct starting page for the guide');
+            this.debugLog('URL CHECK FAILED: User is not on the correct starting page for the guide.');
             
             // Hide thinking indicator before showing notification
             if (this.thinkingIndicator) {
@@ -606,28 +602,27 @@ export default class CursorFlow {
               this.thinkingIndicator = null;
             }
             
-            if (redirectUrl) {
-              // Store the guide ID in localStorage for auto-start after redirect
-              try {
-                localStorage.setItem('hyphen_redirect_guide_id', guideId);
-                this.debugLog('Stored redirect guide ID in localStorage:', guideId);
-              } catch (err) {
-                console.error('Failed to store guide ID in localStorage:', err);
-              }
+            if (targetUrl) {
+              this.debugLog(`Navigating to target URL: ${targetUrl} using history.pushState`);
+              history.pushState({}, '', targetUrl);
+              // After pushState, the handleNavigation method (if set up correctly) should detect the URL change
+              // and proceed with loading the guide. We still call startGuide to ensure the process continues.
+              // We might need a small delay for the URL change to be processed by navigation handlers.
               
-              // Show notification with redirect option
-              CursorFlowUI.showRedirectNotification({
-                message: 'To start this guide, you need to go to the starting page first',
-                type: 'info',
-                redirectUrl: redirectUrl,
-                redirectText: 'Go to start'
-              });
-              // IMPORTANT: Reset playing state as we are redirecting, not playing yet
-              this.setIsPlaying(false, true);
+              // No longer storing hyphen_redirect_guide_id in localStorage.
+              
+              // We will proceed to startGuide, which will then likely call playCurrentStep.
+              // handleNavigation should ideally pick up the change and find the correct step.
+              // Let's call handleNavigation explicitly to ensure it re-evaluates context.
+              this.handleNavigation(true); // Pass true to indicate we want to continue through steps.
+              // Then, call startGuide to ensure the guide machinery is fully initialized for the new URL.
+              // This might seem redundant if handleNavigation works perfectly, but ensures robustness.
+              // await this.startGuide(guideId, token); // This might be too soon, let handleNavigation do its job.
+              return; // Exit retrieveGuideData as navigation logic will take over.
             } else {
               // No redirect URL available
               CursorFlowUI.showNotification({
-                message: 'Guide cannot start - missing URL information',
+                message: 'Guide cannot start - missing URL information for the first step.',
                 type: 'error',
                 autoClose: 5000
               });
@@ -1728,12 +1723,12 @@ export default class CursorFlow {
         console.log('All guide steps completed, resetting state');
       }
       
-      // Clear any redirect guide ID
-      try {
-        localStorage.removeItem('hyphen_redirect_guide_id');
-      } catch (err) {
-        console.warn('Failed to clear redirect guide ID on completion:', err);
-      }
+      // Clear any redirect guide ID - no longer needed.
+      // try {
+      //   localStorage.removeItem('hyphen_redirect_guide_id');
+      // } catch (err) {
+      //   console.warn('Failed to clear redirect guide ID on completion:', err);
+      // }
       
       // Track successful completion of the flow
       if (this.executionTracker.isActive()) {

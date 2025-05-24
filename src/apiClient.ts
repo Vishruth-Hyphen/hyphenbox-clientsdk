@@ -142,9 +142,15 @@ export class ApiClient {
 
   /**
    * Fetch organization theme settings
-   * @returns - The theme object { brand_color, cursor_company_label, logo_url } or null
+   * @returns - The theme object with brand_color, cursor_company_label, logo_url, button_position, button_text or null
    */
-  async getOrganizationTheme(): Promise<{ brand_color: string, cursor_company_label: string | null, logo_url: string | null } | null> {
+  async getOrganizationTheme(): Promise<{ 
+    brand_color: string, 
+    cursor_company_label: string | null, 
+    logo_url: string | null,
+    button_position: string | null,
+    button_text: string | null
+  } | null> {
     try {
       console.log(`[API Client] Fetching theme for current organization (via API Key)`);
       const response = await this.client.get(`/api/sdk/theme`, {

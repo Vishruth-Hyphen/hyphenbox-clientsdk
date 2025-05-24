@@ -29,6 +29,8 @@ export interface CursorFlowOptions {
     brand_color?: string;
     cursor_company_label?: string | null;
     logo_url?: string | null;
+    button_position?: string; // New: bottom-left, bottom-right, bottom-center
+    button_text?: string; // New: customizable button text
     modal_bg_color?: string;
     font_family?: string;
     text_color?: string;

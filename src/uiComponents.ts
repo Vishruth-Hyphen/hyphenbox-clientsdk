@@ -77,11 +77,29 @@ export class CursorFlowUI {
         console.warn('[BUTTON-DEBUG] Icon container is empty or not found after setting innerHTML');
     }
     
-    // Modern styling with adjusted padding for icon
+    // Get position from theme or default to bottom-left
+    const position = theme.button_position || 'bottom-left';
+    console.log('[BUTTON-DEBUG] Button position from theme:', position);
+    
+    // Set position-specific styles
+    let positionStyles = '';
+    switch (position) {
+      case 'bottom-right':
+        positionStyles = 'bottom: 20px; right: 20px; left: auto;';
+        break;
+      case 'bottom-center':
+        positionStyles = 'bottom: 20px; left: 50%; right: auto; transform: translateX(-50%);';
+        break;
+      case 'bottom-left':
+      default:
+        positionStyles = 'bottom: 20px; left: 20px; right: auto;';
+        break;
+    }
+    
+    // Modern styling with position-based placement
     button.style.cssText = `
         position: fixed;
-        bottom: 20px;
-        left: 20px;
+        ${positionStyles}
         padding: 10px 16px;
         background-color: #ffffff;
         color: #1a1a1a;
@@ -101,12 +119,12 @@ export class CursorFlowUI {
 
     // Add hover effect
     button.addEventListener('mouseover', () => {
-        button.style.transform = 'translateY(-2px)';
+        button.style.transform = (position === 'bottom-center' ? 'translateX(-50%) ' : '') + 'translateY(-2px)';
         button.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)';
     });
     
     button.addEventListener('mouseout', () => {
-        button.style.transform = 'translateY(0)';
+        button.style.transform = position === 'bottom-center' ? 'translateX(-50%)' : 'translateY(0)';
         button.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)';
     });
 
@@ -1151,118 +1169,126 @@ export class CursorFlowUI {
 
   /**
    * Dynamically positions a notification near the currently active button
-   * Priority: copilot button > start button > dedicated stop button > fallback
+   * Priority: stop buttons (any type) > active buttons > fallback buttons > center fallback
+   * The stop button is the "north star" for positioning since it's always visible during guide execution
    */
   private static positionNotificationNearActiveButton(notification: HTMLElement): void {
-    let activeButton: HTMLElement | null = null;
+    let targetButton: HTMLElement | null = null;
     let buttonType = '';
+    let buttonPosition = 'bottom-left'; // Default position
 
-    // Strategy 1: Check for active copilot button (with stop functionality)
-    const copilotButton = document.querySelector('.hyphen-copilot-button.hyphen-stop-guide-active') as HTMLElement;
-    if (copilotButton && document.body.contains(copilotButton)) {
-      activeButton = copilotButton;
-      buttonType = 'copilot';
-    }
+    // Strategy 1: Find ANY active stop button (highest priority - this is our "north star")
+    const stopButtons = [
+      document.querySelector('.hyphen-copilot-button.hyphen-stop-guide-active'),
+      document.querySelector('.hyphen-start-button.hyphen-stop-guide-active'),
+      document.querySelector('.hyphen-dedicated-stop-button')
+    ].filter(btn => btn && document.body.contains(btn)) as HTMLElement[];
 
-    // Strategy 2: Check for active start button (with stop functionality)
-    if (!activeButton) {
-      const startButton = document.querySelector('.hyphen-start-button.hyphen-stop-guide-active') as HTMLElement;
-      if (startButton && document.body.contains(startButton)) {
-        activeButton = startButton;
-        buttonType = 'start';
+    if (stopButtons.length > 0) {
+      targetButton = stopButtons[0]; // Use first found stop button
+      buttonType = 'stop';
+      
+      // Try to determine position from button location
+      const rect = targetButton.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      
+      if (targetButton.classList.contains('hyphen-dedicated-stop-button')) {
+        buttonPosition = 'bottom-center'; // Dedicated stop buttons are typically centered
+      } else {
+        // Determine position based on button location
+        if (rect.left < viewportWidth * 0.33) {
+          buttonPosition = 'bottom-left';
+        } else if (rect.left > viewportWidth * 0.66) {
+          buttonPosition = 'bottom-right';
+        } else {
+          buttonPosition = 'bottom-center';
+        }
       }
     }
 
-    // Strategy 3: Check for dedicated stop button
-    if (!activeButton) {
-      const dedicatedStopButton = document.querySelector('.hyphen-dedicated-stop-button') as HTMLElement;
-      if (dedicatedStopButton && document.body.contains(dedicatedStopButton)) {
-        activeButton = dedicatedStopButton;
-        buttonType = 'dedicated';
+    // Strategy 2: Check for regular active buttons if no stop button found
+    if (!targetButton) {
+      const activeButtons = [
+        document.querySelector('.hyphen-copilot-button'),
+        document.querySelector('.hyphen-start-button')
+      ].filter(btn => btn && document.body.contains(btn)) as HTMLElement[];
+
+      if (activeButtons.length > 0) {
+        targetButton = activeButtons[0];
+        buttonType = 'regular';
+        
+        // Determine position based on button location or theme data if available
+        const rect = targetButton.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        
+        if (rect.left < viewportWidth * 0.33) {
+          buttonPosition = 'bottom-left';
+        } else if (rect.left > viewportWidth * 0.66) {
+          buttonPosition = 'bottom-right';
+        } else {
+          buttonPosition = 'bottom-center';
+        }
       }
     }
 
-    // Strategy 4: Fallback to any available button
-    if (!activeButton) {
-      const fallbackButton = document.querySelector('.hyphen-copilot-button, .hyphen-start-button') as HTMLElement;
-      if (fallbackButton && document.body.contains(fallbackButton)) {
-        activeButton = fallbackButton;
-        buttonType = 'fallback';
-      }
-    }
-
-    if (activeButton) {
-      const buttonRect = activeButton.getBoundingClientRect();
-      const notificationRect = notification.getBoundingClientRect();
+    if (targetButton) {
+      const buttonRect = targetButton.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Position based on button type and available space
-      if (buttonType === 'dedicated') {
-        // Dedicated button is center-bottom, so position notification above it
+      // Position based on button position and available space
+      if (buttonPosition === 'bottom-center') {
+        // For center positioned buttons, position notification above
         notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
         notification.style.left = '50%';
         notification.style.transform = 'translateX(-50%)';
         notification.style.right = 'auto';
         notification.style.top = 'auto';
-      } else {
-        // For copilot and start buttons, position to the side with best space
-        const spaceRight = viewportWidth - buttonRect.right;
+      } else if (buttonPosition === 'bottom-right') {
+        // For right positioned buttons, try left side first, then above
         const spaceLeft = buttonRect.left;
-        const spaceAbove = buttonRect.top;
-        const spaceBelow = viewportHeight - buttonRect.bottom;
-
-        // Estimate notification height (including buttons if present)
-        const estimatedHeight = notification.querySelector('.hyphen-notification button') ? 120 : 80;
-
-        // Prefer positioning to the right if there's enough space
-        if (spaceRight >= 320) { // 300px notification + 20px margin
-          // Ensure notification doesn't go below viewport
-          const topPosition = Math.max(10, Math.min(buttonRect.top, viewportHeight - estimatedHeight - 10));
-          notification.style.top = `${topPosition}px`;
-          notification.style.left = `${buttonRect.right + 10}px`;
-          notification.style.transform = 'none';
-          notification.style.right = 'auto';
-          notification.style.bottom = 'auto';
-        }
-        // Otherwise try left
-        else if (spaceLeft >= 320) {
-          const topPosition = Math.max(10, Math.min(buttonRect.top, viewportHeight - estimatedHeight - 10));
-          notification.style.top = `${topPosition}px`;
+        const estimatedNotificationWidth = 320;
+        
+        if (spaceLeft >= estimatedNotificationWidth) {
+          // Position to the left of button
+          notification.style.top = `${Math.max(10, buttonRect.top)}px`;
           notification.style.right = `${viewportWidth - buttonRect.left + 10}px`;
           notification.style.left = 'auto';
           notification.style.transform = 'none';
           notification.style.bottom = 'auto';
+        } else {
+          // Position above button
+          notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
+          notification.style.right = `${viewportWidth - buttonRect.right}px`;
+          notification.style.left = 'auto';
+          notification.style.transform = 'none';
+          notification.style.top = 'auto';
         }
-        // Try above if there's enough space
-        else if (spaceAbove >= estimatedHeight + 20) {
+      } else {
+        // For left positioned buttons (default), try right side first, then above
+        const spaceRight = viewportWidth - buttonRect.right;
+        const estimatedNotificationWidth = 320;
+        
+        if (spaceRight >= estimatedNotificationWidth) {
+          // Position to the right of button
+          notification.style.top = `${Math.max(10, buttonRect.top)}px`;
+          notification.style.left = `${buttonRect.right + 10}px`;
+          notification.style.transform = 'none';
+          notification.style.right = 'auto';
+          notification.style.bottom = 'auto';
+        } else {
+          // Position above button
           notification.style.bottom = `${viewportHeight - buttonRect.top + 10}px`;
           notification.style.left = `${buttonRect.left}px`;
           notification.style.transform = 'none';
           notification.style.right = 'auto';
           notification.style.top = 'auto';
         }
-        // Try below if there's enough space
-        else if (spaceBelow >= estimatedHeight + 20) {
-          notification.style.top = `${buttonRect.bottom + 10}px`;
-          notification.style.left = `${buttonRect.left}px`;
-          notification.style.transform = 'none';
-          notification.style.right = 'auto';
-          notification.style.bottom = 'auto';
-        }
-        // Fallback: center horizontally and position safely in viewport
-        else {
-          // Position in the center of the viewport, but ensure it's fully visible
-          notification.style.top = '50%';
-          notification.style.left = '50%';
-          notification.style.transform = 'translate(-50%, -50%)';
-          notification.style.right = 'auto';
-          notification.style.bottom = 'auto';
-        }
       }
 
-      console.log(`[NOTIFICATION] Positioned near ${buttonType} button at:`, {
+      console.log(`[NOTIFICATION] Positioned near ${buttonType} button (${buttonPosition}) at:`, {
         buttonRect,
+        buttonPosition,
         notificationStyle: {
           top: notification.style.top,
           bottom: notification.style.bottom,
@@ -1273,17 +1299,7 @@ export class CursorFlowUI {
       });
     } else {
       // Ultimate fallback position if no buttons found
-      // Ensure notification is fully visible by measuring its height
-      const notificationRect = notification.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      
-      // Check if notification has buttons (like redirect notifications)
       const hasButtons = notification.querySelector('button') !== null;
-      const estimatedHeight = hasButtons ? 120 : 80; // Estimate based on content
-      
-      // Position to ensure full visibility
-      const bottomMargin = Math.max(20, estimatedHeight - (viewportHeight - 150)); // Ensure we don't go off-screen
       
       // For notifications with important action buttons (like redirect), center them
       if (hasButtons) {
@@ -1292,15 +1308,15 @@ export class CursorFlowUI {
         notification.style.transform = 'translate(-50%, -50%)';
         notification.style.right = 'auto';
         notification.style.bottom = 'auto';
-        console.log('[NOTIFICATION] No active button found, centering notification with buttons');
+        console.log('[NOTIFICATION] No buttons found, centering notification with actions');
       } else {
         // For simple notifications, use bottom-right but ensure visibility
-        notification.style.bottom = `${bottomMargin}px`;
+        notification.style.bottom = '20px';
         notification.style.right = '20px';
         notification.style.left = 'auto';
         notification.style.transform = 'none';
         notification.style.top = 'auto';
-        console.log('[NOTIFICATION] No active button found, using safe bottom-right position');
+        console.log('[NOTIFICATION] No buttons found, using bottom-right fallback');
       }
     }
   }

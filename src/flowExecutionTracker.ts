@@ -13,6 +13,7 @@ export class FlowExecutionTracker {
   private retryCount: number = 0;
   private maxRetries: number = 3;
   private active: boolean = false;
+  private completed: boolean = false;
   private pendingOperations: Array<() => Promise<boolean>> = [];
   private pendingTimeout: any = null;
   private sessionDetails: any = null;
@@ -70,6 +71,11 @@ export class FlowExecutionTracker {
       return false;
     }
     
+    if (this.completed) {
+      console.log('[FlowExecutionTracker] Skipping step completion - flow already completed');
+      return true;
+    }
+    
     this.lastStepId = stepId;
     this.lastStepPosition = position;
     
@@ -112,6 +118,8 @@ export class FlowExecutionTracker {
       return false;
     }
     
+    this.completed = true;
+    
     // If execution hasn't been initialized yet, queue this operation
     if (!this.executionId) {
       console.log('[FlowExecutionTracker] Queueing flow completion for later');
@@ -151,6 +159,8 @@ export class FlowExecutionTracker {
       console.warn('[FlowExecutionTracker] Cannot track abandonment - tracking not active');
       return false;
     }
+    
+    this.completed = true;
     
     // Map the reason to the status format expected by the backend
     const statusMap = {
@@ -203,6 +213,7 @@ export class FlowExecutionTracker {
     this.lastStepPosition = null;
     this.retryCount = 0;
     this.active = false;
+    this.completed = false;
     this.pendingOperations = [];
     this.sessionDetails = null;
     
