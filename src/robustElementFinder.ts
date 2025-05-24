@@ -9,32 +9,35 @@ export class RobustElementFinder {
 
     static setDebugMode(enabled: boolean): void {
         this.debugMode = enabled;
-        // Unconditional log to verify debug mode is set
-        console.log(`[RobustFinder-VERIFY] Debug mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder] Debug mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        }
     }
 
     /**
-     * Tries strategies sequentially. For each strategy, finds candidates, 
-     * filters by text, and validates with SelectiveDomAnalyzer.
-     * Returns the first unambiguously validated element.
+     * Tries strategies sequentially to find candidate elements.
      */
     static async findCandidates(interaction: InteractionData): Promise<HTMLElement[]> {
-        console.log(`[RobustFinder-VERIFY] findCandidates CALLED (Sequential Text-Gated Approach) - Debug: ${this.debugMode}`);
-        if (this.debugMode) console.log(`[RobustFinder-VERIFY] Interaction data:`, JSON.parse(JSON.stringify(interaction)));
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder] Finding candidates for interaction:`, interaction);
+        }
 
         const elementData = interaction.element || {};
         const targetText = interaction.text || elementData.textContent;
 
         let attempt = 0;
         while (attempt <= this.MAX_RETRIES) {
-            const runId = `Attempt ${attempt + 1}/${this.MAX_RETRIES + 1}`; 
-            console.log(`[RobustFinder][${runId}] Starting search cycle.`);
+            const runId = `Attempt ${attempt + 1}`;
+            
+            if (this.debugMode) {
+                console.log(`[RobustElementFinder][${runId}] Starting search cycle`);
+            }
 
-            await this.waitForModalStability(); // Wait for UI stability before each attempt cycle
+            await this.waitForModalStability();
             const allSearchRoots = this.getSearchRoots();
             const attributes = this.parseAttributes(elementData.attributes);
 
-            // --- Define Strategies in Priority Order --- 
+            // Define Strategies in Priority Order
             const strategies: { name: string; execute: () => Promise<HTMLElement[]> }[] = [];
 
             // 1. Escaped ID
@@ -45,12 +48,14 @@ export class RobustElementFinder {
             if (elementData.cssSelector && elementData.cssSelector !== elementData.id && !elementData.cssSelector.includes(':contains(')) {
                 strategies.push({ name: 'Escaped CSS', execute: () => this.executeStrategy(runId, 'Escaped CSS', allSearchRoots, this.tryEscapeSelector(elementData.cssSelector!), targetText, interaction) });
             } else if (elementData.cssSelector?.includes(':contains(')) { 
-                console.warn(`[RobustFinder][${runId}] Skipping invalid CSS selector with :contains:`); 
+                if (this.debugMode) {
+                    console.warn(`[RobustElementFinder] Skipping invalid CSS selector with :contains`); 
+                }
             }
             // 3. Attributes (Stable)
             if (attributes) {
                 this.buildAttributeSelectors(elementData.tagName, attributes)
-                    .filter(attr => attr.type === 'Stable') // Only stable attrs first
+                    .filter(attr => attr.type === 'Stable')
                     .forEach(attr => {
                         strategies.push({ name: `Attributes-Stable (${attr.selector.split('[')[1].split('=')[0]})`, execute: () => this.executeStrategy(runId, `Attributes-Stable`, allSearchRoots, attr.selector, targetText, interaction) });
                     });
@@ -59,7 +64,6 @@ export class RobustElementFinder {
             if (targetText) {
                 const tagToSearch = elementData.tagName || '*';
                 const exactTextXPath = `//*[normalize-space(.) = "${targetText.replace(/"/g, '&quot;')}"] | //*[@value = "${targetText.replace(/"/g, '&quot;')}"] | //*[normalize-space(@aria-label) = "${targetText.replace(/"/g, '&quot;')}"]`
-                // Add Tag + Text (Exact) - often faster than XPath
                 strategies.push({ name: 'Tag + Text (Exact)', execute: () => this.executeStrategy(runId, 'Tag + Text (Exact)', allSearchRoots, tagToSearch, targetText, interaction, true) }); 
                 strategies.push({ name: 'Text-based XPath (Exact)', execute: () => this.executeXPathStrategy(runId, 'Text-based XPath (Exact)', allSearchRoots, exactTextXPath, targetText, interaction, true) });
             }
@@ -86,32 +90,39 @@ export class RobustElementFinder {
                         strategies.push({ name: `Attributes-${attr.type}`, execute: () => this.executeStrategy(runId, `Attributes-${attr.type}`, allSearchRoots, attr.selector, targetText, interaction) });
                     });
             }
-            // --- Execute Strategies Sequentially --- 
+            
+            // Execute Strategies Sequentially
             for (const strategy of strategies) {
-                if (this.debugMode) console.log(`\n[RobustFinder][${runId}] ---> Trying Strategy: ${strategy.name}`);
+                if (this.debugMode) {
+                    console.log(`[RobustElementFinder][${runId}] Trying strategy: ${strategy.name}`);
+                }
                 const result = await strategy.execute();
                 if (result.length === 1) {
-                    console.log(`[RobustFinder][${runId}] ***** SUCCESS ***** Found unambiguous element via strategy: ${strategy.name}`);
-                    return result; // Found the single best element
+                    if (this.debugMode) {
+                        console.log(`[RobustElementFinder][${runId}] SUCCESS: Found element via ${strategy.name}`);
+                    }
+                    return result;
                 } else if (result.length > 1) {
-                    console.warn(`[RobustFinder][${runId}] Ambiguity detected for strategy ${strategy.name}. Found ${result.length} valid candidates after deep validation. Returning empty as strategy is inconclusive.`);
-                    // Ambiguous result, potentially log this and continue (or return empty based on desired strictness)
-                    // For now, let's treat ambiguity after deep validation as needing the next strategy level.
-                    // If it becomes a problem, we might return the ambiguous list.
+                    if (this.debugMode) {
+                        console.warn(`[RobustElementFinder][${runId}] Ambiguity: ${result.length} candidates for ${strategy.name}`);
+                    }
                 }
-                // If result.length === 0, the strategy failed (no candidates, no text match, or failed deep validation), continue to next.
             }
-            // --- Retry Logic --- 
+            
+            // Retry Logic
             attempt++;
             if (attempt <= this.MAX_RETRIES) {
-                console.log(`[RobustFinder][${runId}] FAILED CYCLE. No unambiguous element found. Retrying in ${this.RETRY_DELAY_MS}ms...`);
+                if (this.debugMode) {
+                    console.log(`[RobustElementFinder][${runId}] Retrying in ${this.RETRY_DELAY_MS}ms...`);
+                }
                 await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS));
-            } else {
-                console.log(`[RobustFinder] All ${this.MAX_RETRIES + 1} attempts FAILED. No unambiguous element found.`);
             }
-        } // End while loop
+        }
 
-        return []; // Return empty array if all strategies and retries fail
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder] All attempts failed - no unambiguous element found`);
+        }
+        return [];
     }
 
     /** Helper to execute a querySelectorAll strategy */
@@ -137,34 +148,40 @@ export class RobustElementFinder {
         }
 
         if (candidates.length === 0) {
-            if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: No initial candidates found using selector '${selector}'.`);
-            return []; // Strategy failed to find any element
+            if (this.debugMode) {
+                console.log(`[RobustElementFinder][${runId}] ${strategyName}: No candidates found`);
+            }
+            return [];
         }
 
         // Filter by text
-        const uniqueCandidates = Array.from(new Set(candidates)); // Ensure uniqueness
+        const uniqueCandidates = Array.from(new Set(candidates));
         const textMatchingCandidates = !targetText ? uniqueCandidates : uniqueCandidates.filter(el => 
             this.isTextContentMatching(el, targetText, exactMatch)
         );
 
         if (textMatchingCandidates.length === 0) {
-            if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Found ${uniqueCandidates.length} initial candidates, but none matched text filter (Exact: ${exactMatch}, Text: "${targetText}").`);
-            return []; // Strategy found elements, but none matched text
+            if (this.debugMode) {
+                console.log(`[RobustElementFinder][${runId}] ${strategyName}: No text matches (${exactMatch ? 'exact' : 'partial'})`);
+            }
+            return [];
         }
 
         // Validate remaining candidates deeply
-        if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Found ${textMatchingCandidates.length} text-matching candidate(s). Performing deep validation...`);
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder][${runId}] ${strategyName}: Validating ${textMatchingCandidates.length} text-matching candidates`);
+        }
         const validCandidates: HTMLElement[] = [];
         for (const candidate of textMatchingCandidates) {
-             // Use SelectiveDomAnalyzer for deep validation (visibility, occlusion etc.)
-            // Pass 'strict' validation mode by default.
             if (SelectiveDomAnalyzer.validateCandidateElement(candidate, interaction)) { 
                 validCandidates.push(candidate);
             }
         }
         
-        if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Deep validation resulted in ${validCandidates.length} valid candidate(s).`);
-        return validCandidates; // Return validated candidates (could be 0, 1, or >1)
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder][${runId}] ${strategyName}: ${validCandidates.length} candidates passed validation`);
+        }
+        return validCandidates;
     }
 
     /** Helper to execute an XPath strategy */
@@ -188,11 +205,17 @@ export class RobustElementFinder {
                     }
                     node = result.iterateNext();
                 }
-            } catch (e) { console.warn(`[RobustFinder][${runId}] Error evaluating XPath "${xpath.substring(0,100)}..." in ${name}:`, e); }
+            } catch (e) { 
+                if (this.debugMode) {
+                    console.warn(`[RobustElementFinder][${runId}] XPath error in ${name}:`, e); 
+                }
+            }
         }
 
         if (candidates.length === 0) {
-            if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: No initial candidates found.`);
+            if (this.debugMode) {
+                console.log(`[RobustElementFinder][${runId}] ${strategyName}: No XPath candidates found`);
+            }
             return [];
         }
 
@@ -202,11 +225,15 @@ export class RobustElementFinder {
         );
 
         if (textMatchingCandidates.length === 0) {
-            if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Found ${uniqueCandidates.length} initial candidates, but none matched text filter (Exact: ${exactMatch}, Text: "${targetText}").`);
+            if (this.debugMode) {
+                console.log(`[RobustElementFinder][${runId}] ${strategyName}: No XPath text matches`);
+            }
             return [];
         }
 
-        if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Found ${textMatchingCandidates.length} text-matching candidate(s). Performing deep validation...`);
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder][${runId}] ${strategyName}: Validating ${textMatchingCandidates.length} XPath candidates`);
+        }
         const validCandidates: HTMLElement[] = [];
         for (const candidate of textMatchingCandidates) {
              if (SelectiveDomAnalyzer.validateCandidateElement(candidate, interaction)) { 
@@ -214,7 +241,9 @@ export class RobustElementFinder {
             }
         }
         
-        if (this.debugMode) console.log(`[RobustFinder][${runId}] ${strategyName}: Deep validation resulted in ${validCandidates.length} valid candidate(s).`);
+        if (this.debugMode) {
+            console.log(`[RobustElementFinder][${runId}] ${strategyName}: ${validCandidates.length} XPath candidates passed validation`);
+        }
         return validCandidates;
     }
 
@@ -240,7 +269,7 @@ export class RobustElementFinder {
         const normalizedAriaLabel = ariaLabel.trim().toLowerCase().replace(/\s+/g, '');
 
         if (this.debugMode) {
-            console.log(`[RobustFinder] Text Matching:
+            console.log(`[RobustElementFinder] Text Matching:
     - Target (normalized): "${normalizedTargetText}" (Exact: ${exactMatchRequired})
     - Element Best Text (normalized): "${bestElementText}" (from innerText/textContent)
     - Element Value (normalized): "${normalizedValueText}"
@@ -289,11 +318,10 @@ export class RobustElementFinder {
             if (portals.length > 0) {
                 portals.forEach((portal, index) => { roots.push({ name: `Portal ${index + 1}`, root: portal }); });
                 foundSpecificContent = true;
-                if (this.debugMode) console.log(`[RobustFinder] Found ${portals.length} data-portal elements.`);
+                if (this.debugMode) console.log(`[RobustElementFinder] Found ${portals.length} data-portal elements.`);
             }
 
-            // Then continue with your existing modal content detection
-            // 1. PRIORITIZE: Find specific modal/dialog CONTENT containers
+            // Find specific modal/dialog CONTENT containers
             const modalContentSelectors = [
                 // Mantine
                 '.mantine-Modal-content', '.mantine-Dialog-content',
@@ -301,9 +329,9 @@ export class RobustElementFinder {
                 '.modal-content', '.modal-body',
                 // Material UI
                 '.MuiDialog-paper', '.MuiModal-root > div[role="presentation"]:not([aria-hidden="true"])',
-                 // Generic dialog patterns (more specific first)
-                '[role="dialog"][aria-modal="true"] > *:not(style):not(script)', // Direct child of modal dialog
-                '[role="dialog"]:not([aria-modal="true"]) > *:not(style):not(script)', // Non-modal dialog direct child
+                 // Generic dialog patterns
+                '[role="dialog"][aria-modal="true"] > *:not(style):not(script)',
+                '[role="dialog"]:not([aria-modal="true"]) > *:not(style):not(script)',
                 '.dialog-content', '.modal-container > *:not(style):not(script)',
                 '.popup-content'
             ];
@@ -313,7 +341,6 @@ export class RobustElementFinder {
             if (contentElements.length > 0) {
                 const visibleContentElements = Array.from(contentElements)
                     .filter(el => {
-                        // Basic inline visibility check for potential roots
                         if (!(el instanceof HTMLElement)) return false;
                         const style = window.getComputedStyle(el);
                         const rect = el.getBoundingClientRect();
@@ -321,7 +348,7 @@ export class RobustElementFinder {
                                style.visibility !== 'hidden' &&
                                parseFloat(style.opacity || '1') > 0 &&
                                !el.hidden &&
-                               (rect.width > 0 || rect.height > 0); // Check rect for size
+                               (rect.width > 0 || rect.height > 0);
                     }) as HTMLElement[];
 
                  // Sort by z-index (highest first)
@@ -335,17 +362,15 @@ export class RobustElementFinder {
                     visibleContentElements.forEach((el, i) =>
                         roots.push({ name: `Modal Content ${i+1}`, root: el }));
                     foundSpecificContent = true;
-                    if (this.debugMode) console.log(`[RobustFinder] Found ${roots.length} specific modal content root(s).`);
+                    if (this.debugMode) console.log(`[RobustElementFinder] Found ${roots.length} specific modal content root(s).`);
                 }
             }
 
-            // 2. FALLBACK: If no specific CONTENT found, look for OVERLAY roots
+            // Fallback: If no specific CONTENT found, look for OVERLAY roots
             if (!foundSpecificContent) {
-                if (this.debugMode) console.log(`[RobustFinder] No specific content roots found, searching for overlay roots...`);
+                if (this.debugMode) console.log(`[RobustElementFinder] No specific content roots found, searching for overlay roots...`);
                 const potentialOverlays = Array.from(document.querySelectorAll(
-                    // General containers
                     '[role="dialog"], [role="alertdialog"], .modal, .dialog, .popup, .overlay,' +
-                     // Framework specific roots
                      '.mantine-Modal-root, .mantine-Drawer-root, .mantine-Popover-dropdown,' +
                      '.MuiModal-root, .MuiDialog-root'
                 )) as HTMLElement[];
@@ -353,7 +378,6 @@ export class RobustElementFinder {
                 const visibleOverlays = potentialOverlays.filter(el => {
                      try {
                         const style = window.getComputedStyle(el);
-                        // Basic visibility check for overlay roots
                         return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity || '1') > 0 && !el.hidden;
                     } catch (e) { return false; }
                 });
@@ -364,20 +388,21 @@ export class RobustElementFinder {
                         const zIndexB = parseInt(window.getComputedStyle(b).zIndex) || 0;
                         return zIndexB - zIndexA;
                     });
-                    // Add only the highest z-index overlay if multiple are found at this stage?
-                    // For now, add all visible ones found via this method.
                     visibleOverlays.forEach((el, i) =>
                         roots.push({ name: `Overlay Root ${i+1}`, root: el }));
-                     if (this.debugMode) console.log(`[RobustFinder] Found ${roots.length} overlay root(s).`);
+                     if (this.debugMode) console.log(`[RobustElementFinder] Found ${roots.length} overlay root(s).`);
                 }
             }
         } catch (e) {
-            console.warn('[RobustFinder] Error detecting modal/overlay elements:', e);
+            console.warn('[RobustElementFinder] Error detecting modal/overlay elements:', e);
         }
 
-        // 3. FINAL FALLBACK: Always add document
+        // Always add document
         roots.push({ name: 'Document', root: document });
-        console.log('[RobustFinder] Final search roots determined:', roots.map(r => r.name));
+        
+        if (this.debugMode) {
+            console.log('[RobustElementFinder] Final search roots:', roots.map(r => r.name));
+        }
         return roots;
     }
 
@@ -387,7 +412,7 @@ export class RobustElementFinder {
          try {
             return JSON.parse(attrs);
          } catch (e) {
-            console.error("[RobustFinder] Failed to parse attributes JSON:", attrs, e);
+            console.error("[RobustElementFinder] Failed to parse attributes JSON:", attrs, e);
             return null;
          }
     }
@@ -397,7 +422,7 @@ export class RobustElementFinder {
              selector = selector.replace(/#((?:\\.|[\w-]|[^\x00-\xa0])+)(\S*)/g, (match, idPart, remainder) => `#${idPart}${CSS.escape(remainder)}`);
              selector = selector.replace(/\[([^\]=]+)=["']?([^\]"']+)["']?\]/g, (match, attr, value) => `[${attr}="${CSS.escape(value)}"]`);
          } catch (e) {
-             console.warn(`[RobustFinder] CSS escaping failed for selector: ${selector}`, e);
+             console.warn(`[RobustElementFinder] CSS escaping failed for selector: ${selector}`, e);
          }
          return selector;
     }
@@ -415,11 +440,11 @@ export class RobustElementFinder {
                 // Use double quotes for the attribute value in XPath
                 return `//*[@id="${idEscaped}"]${relativePath}`;
             } catch (e) {
-                 console.warn(`[RobustFinder] Could not construct XPath with [@id="..."] for ${elementId}. Error:`, e);
+                 console.warn(`[RobustElementFinder] Could not construct XPath with [@id="..."] for ${elementId}. Error:`, e);
                  try {
                      return `id('${CSS.escape(elementId)}')${relativePath}`;
                  } catch (e2) {
-                      console.warn(`[RobustFinder] Could not construct XPath with id() either for ${elementId}. Error:`, e2);
+                      console.warn(`[RobustElementFinder] Could not construct XPath with id() either for ${elementId}. Error:`, e2);
                       return null;
                  }
             }
@@ -438,14 +463,50 @@ export class RobustElementFinder {
     private static waitForModalStability(initialDelay = 150, checkInterval = 100, maxAttempts = 20, stabilityThreshold = 3): Promise<void> {
         return new Promise(resolve => {
             const shouldLogStability = this.debugMode; 
-            if (shouldLogStability) console.log('[RobustFinder-Stability] Starting stability check...');
+            if (shouldLogStability) console.log('[RobustElementFinder-Stability] Starting stability check...');
             const stabilitySelectors ='[data-portal="true"], [role="dialog"], .modal-content, .mantine-Modal-content, .MuiDialog-paper, .MuiModal-root > div[role="presentation"]:not([aria-hidden="true"])';
             const initialElements = document.querySelectorAll(stabilitySelectors);
-            if (initialElements.length === 0) { if (shouldLogStability) console.log('[RobustFinder-Stability] No initial modal/portal elements found. Resolving immediately.'); resolve(); return; }
+            if (initialElements.length === 0) { 
+                if (shouldLogStability) console.log('[RobustElementFinder-Stability] No modal/portal elements found. Resolving immediately.'); 
+                resolve(); 
+                return; 
+            }
             let stableCount = 0, lastElementCount = initialElements.length, lastStructureSignature = '', attempts = 0;
-            const getStructureSignature = (elements: NodeListOf<Element>): string => { return Array.from(elements).map(el => { const r = el.getBoundingClientRect(); return `${el.tagName}${el.id?'#'+el.id:''}:${el.classList.length}:${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.left)},${Math.round(r.top)}`}).join('|'); };
+            const getStructureSignature = (elements: NodeListOf<Element>): string => { 
+                return Array.from(elements).map(el => { 
+                    const r = el.getBoundingClientRect(); 
+                    return `${el.tagName}${el.id?'#'+el.id:''}:${el.classList.length}:${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.left)},${Math.round(r.top)}`
+                }).join('|'); 
+            };
             lastStructureSignature = getStructureSignature(initialElements);
-            const checkStability = () => { attempts++; const currentElements = document.querySelectorAll(stabilitySelectors); const currentStructureSignature = getStructureSignature(currentElements); if (shouldLogStability) { console.log(`[RobustFinder-Stability] Check #${attempts}: Found ${currentElements.length} elements. Sig: ${currentStructureSignature.substring(0,100)}...`); } if (currentElements.length === lastElementCount && currentStructureSignature === lastStructureSignature) { stableCount++; if (shouldLogStability) console.log(`[RobustFinder-Stability] Structure stable for ${stableCount} checks.`); if (stableCount >= stabilityThreshold) { if (shouldLogStability) console.log('[RobustFinder-Stability] Structure deemed stable. Resolving.'); resolve(); return; } } else { if (shouldLogStability) console.log('[RobustFinder-Stability] Structure changed. Resetting stability counter.'); stableCount = 0; lastElementCount = currentElements.length; lastStructureSignature = currentStructureSignature; } if (attempts < maxAttempts) { setTimeout(checkStability, checkInterval); } else { if (shouldLogStability) console.log('[RobustFinder-Stability] Max attempts reached. Resolving anyway.'); resolve(); } };
+            const checkStability = () => { 
+                attempts++; 
+                const currentElements = document.querySelectorAll(stabilitySelectors); 
+                const currentStructureSignature = getStructureSignature(currentElements); 
+                if (shouldLogStability) { 
+                    console.log(`[RobustElementFinder-Stability] Check #${attempts}: Found ${currentElements.length} elements.`); 
+                } 
+                if (currentElements.length === lastElementCount && currentStructureSignature === lastStructureSignature) { 
+                    stableCount++; 
+                    if (shouldLogStability) console.log(`[RobustElementFinder-Stability] Structure stable for ${stableCount} checks.`); 
+                    if (stableCount >= stabilityThreshold) { 
+                        if (shouldLogStability) console.log('[RobustElementFinder-Stability] Structure deemed stable. Resolving.'); 
+                        resolve(); 
+                        return; 
+                    } 
+                } else { 
+                    if (shouldLogStability) console.log('[RobustElementFinder-Stability] Structure changed. Resetting stability counter.'); 
+                    stableCount = 0; 
+                    lastElementCount = currentElements.length; 
+                    lastStructureSignature = currentStructureSignature; 
+                } 
+                if (attempts < maxAttempts) { 
+                    setTimeout(checkStability, checkInterval); 
+                } else { 
+                    if (shouldLogStability) console.log('[RobustElementFinder-Stability] Max attempts reached. Resolving anyway.'); 
+                    resolve(); 
+                } 
+            };
             setTimeout(checkStability, initialDelay);
         });
     }

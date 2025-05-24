@@ -86,7 +86,7 @@ export class OnboardingModal {
     // Clear existing content
     container.innerHTML = '';
 
-    // Initial loading state within the container (before checklists are fetched)
+    // Initial loading state within the container
     const tempLoadingHeader = document.createElement('div');
     tempLoadingHeader.style.cssText = 'padding: 16px; text-align: center;';
     const loadingTitle = this.createHeaderTitleElement('Loading...');
@@ -111,12 +111,10 @@ export class OnboardingModal {
     // Fetch and render checklists
     if (this.apiClient) {
       try {
-        console.log('[OnboardingModal] Fetching onboarding checklists for inline display...');
         this.checklists = await this.apiClient.getOnboardingChecklists();
-        console.log('[OnboardingModal] Checklists fetched for inline display:', this.checklists);
 
         // Now that checklists are fetched, clear loading and render proper header + content
-        container.innerHTML = ''; // Clear again to remove temp loading
+        container.innerHTML = '';
 
         const firstChecklist = (this.checklists && this.checklists.length > 0) ? this.checklists[0] : undefined;
         const headerElement = this.createDynamicHeader(firstChecklist, '', onBack);
@@ -151,11 +149,7 @@ export class OnboardingModal {
           container.appendChild(checklistsContainer);
         }
       } catch (error) {
-        console.error('[OnboardingModal] Failed to load onboarding checklists for inline display:', error);
-        // More detailed error logging
-        if (error instanceof Error) {
-          console.error('[OnboardingModal] Error details:', error.message, error.stack);
-        }
+        console.error('[OnboardingModal] Failed to load onboarding checklists:', error);
         
         // Remove loading indicator
         container.removeChild(loadingIndicatorDiv);

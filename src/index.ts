@@ -94,7 +94,6 @@ export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
     viewAllGuides: {
       show: () => {
         CopilotModal.showSearchModal();
-        console.log("sdk.viewAllGuides.show() called. Currently opens CopilotModal search view. User can navigate to all guides.");
       },
     },
     // apiClient: apiClientInstance, // Expose if needed

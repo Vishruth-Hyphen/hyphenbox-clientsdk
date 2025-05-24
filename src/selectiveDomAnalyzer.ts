@@ -16,11 +16,13 @@ export class SelectiveDomAnalyzer {
     static clearCache(): void {
         this.VALIDATION_CACHE.boundingRects = new WeakMap();
         this.VALIDATION_CACHE.computedStyles = new WeakMap();
-        console.log('[SelectiveDomAnalyzer] Cache cleared.');
+        if (this.debugMode) {
+            console.log('[SelectiveDomAnalyzer] Cache cleared');
+        }
     }
 
     // --- Configuration ---
-    private static debugMode = false; // Set to true for verbose logging
+    private static debugMode = false;
 
     static setDebugMode(enabled: boolean): void {
         this.debugMode = enabled;
@@ -29,12 +31,7 @@ export class SelectiveDomAnalyzer {
     // --- Core Validation Method ---
 
     /**
-     * Validates if a candidate element is suitable for interaction based on
-     * visibility, interactivity, and occlusion checks.
-     * @param element The candidate HTMLElement found by a primary finder.
-     * @param interaction The original interaction data (optional, for context).
-     * @param validationMode 'strict' performs all checks, 'relaxed' performs basic identity checks.
-     * @returns True if the element is deemed valid, false otherwise.
+     * Validates if a candidate element is suitable for interaction.
      */
     static validateCandidateElement(
         element: HTMLElement,
@@ -42,31 +39,29 @@ export class SelectiveDomAnalyzer {
         validationMode: 'strict' | 'relaxed' = 'strict'
     ): boolean {
         if (!element || !(element instanceof HTMLElement)) {
-            // Keep logs minimal unless debugging
-            console.warn('[SelectiveDomAnalyzer] Validation failed: Invalid element provided.');
+            console.warn('[SelectiveDomAnalyzer] Invalid element provided');
             return false;
         }
         
         // Check if the element is still connected to the DOM (ALWAYS CHECK THIS FIRST)
         if (!element.isConnected) {
             if (this.debugMode) {
-                console.log(`[SelectiveDomAnalyzer] Validation FAILED (${validationMode}) for ${element.tagName}#${element.id || 'noId'}: Element not connected to DOM.`);
+                console.log(`[SelectiveDomAnalyzer] Validation FAILED (${validationMode}): Element not connected to DOM`);
             } else {
-                console.warn(`[SelectiveDomAnalyzer] ${validationMode} validation FAILED: Element not connected to DOM.`);
+                console.warn(`[SelectiveDomAnalyzer] Element not connected to DOM`);
             }
             return false;
         }
         
-        // IMPORTANT CHANGE: For 'relaxed' mode, ONLY check if element is connected to DOM
-        // This makes relaxed validation truly lenient for off-screen elements
+        // For 'relaxed' mode, ONLY check if element is connected to DOM
         if (validationMode === 'relaxed') {
             if (this.debugMode) {
-                console.log(`[SelectiveDomAnalyzer] Validation PASSED (Relaxed) for ${element.tagName}#${element.id || 'noId'}: Element is connected to DOM.`);
+                console.log(`[SelectiveDomAnalyzer] Validation PASSED (Relaxed): Element is connected to DOM`);
             }
-            return true; // In relaxed mode, being connected to the DOM is sufficient
+            return true;
         }
         
-        // ---- STRICT MODE VALIDATION (Only runs if validationMode is 'strict') ----
+        // ---- STRICT MODE VALIDATION ----
         const checkStartTime = performance.now();
         let isValid = true;
         let failureReason = '';
@@ -75,7 +70,7 @@ export class SelectiveDomAnalyzer {
         const originalTagName = interaction?.element?.tagName;
         if (originalTagName && element.tagName !== originalTagName) {
             if (this.debugMode) {
-                 console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict) for ${element.tagName}#${element.id || 'noId'}: Tag name mismatch (Expected: ${originalTagName}, Found: ${element.tagName})`);
+                 console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict): Tag name mismatch (Expected: ${originalTagName}, Found: ${element.tagName})`);
             }
             isValid = false;
             failureReason = 'Tag name mismatch';
@@ -85,15 +80,13 @@ export class SelectiveDomAnalyzer {
         const originalId = interaction?.element?.id;
         if (isValid && originalId && element.id !== originalId) {
             // Allow partial matches for dynamic IDs (e.g., Mantine) - only fail if NOT dynamic
-            // Check if originalId exists and does not include '-' before failing
             if (originalId && !originalId.includes('-')) {
                  if (this.debugMode) {
-                    console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict) for ${element.tagName}#${element.id || 'noId'}: ID mismatch (Expected: ${originalId}, Found: ${element.id})`);
+                    console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict): ID mismatch (Expected: ${originalId}, Found: ${element.id})`);
                  }
                 isValid = false;
                 failureReason = 'ID mismatch';
-            } else if (this.debugMode && originalId) { // Only log if originalId exists
-                // Log if skipping due to potential dynamic ID
+            } else if (this.debugMode && originalId) {
                 console.log(`[SelectiveDomAnalyzer] Skipping strict ID check for potential dynamic ID (Original: ${originalId}, Found: ${element.id})`);
             }
         }
@@ -104,11 +97,10 @@ export class SelectiveDomAnalyzer {
             failureReason = 'Element not visible (size, display, visibility)';
         }
 
-        // 4. Interactivity Check (Strict) - Informational, doesn't fail validation for now
+        // 4. Interactivity Check (Strict) - Informational only
         if (isValid && !this.isInteractiveElement(element)) {
-            // Keep this as a log for now, doesn't fail the step
             if (this.debugMode) {
-                 console.log(`[SelectiveDomAnalyzer] Element ${element.tagName}#${element.id || 'noId'} is visible but not strictly interactive.`);
+                 console.log(`[SelectiveDomAnalyzer] Element is visible but not strictly interactive`);
             }
         }
 
@@ -122,8 +114,7 @@ export class SelectiveDomAnalyzer {
         if (isValid && interaction?.element?.textContent) {
             const targetText = interaction.element.textContent;
             if (!this.isTextMatch(element, targetText)) {
-                 console.warn(`[SelectiveDomAnalyzer] Text content mismatch for ${element.tagName}#${element.id || 'noId'}. Expected: "${targetText}", Found: "${element.textContent?.trim()}"`);
-                 // MODIFIED: Treat text mismatch as a hard failure in strict mode
+                 console.warn(`[SelectiveDomAnalyzer] Text content mismatch. Expected: "${targetText}", Found: "${element.textContent?.trim()}"`);
                  isValid = false;
                  failureReason = 'Text content mismatch';
             }
@@ -144,7 +135,7 @@ export class SelectiveDomAnalyzer {
                     const candidateHref = element.getAttribute('href');
                     if (candidateHref !== parsedAttrs.href) {
                          if (this.debugMode) {
-                             console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict) for ${element.tagName}#${element.id || 'noId'}: href mismatch`);
+                             console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict): href mismatch`);
                          }
                          isValid = false;
                          failureReason = 'href mismatch';
@@ -154,7 +145,7 @@ export class SelectiveDomAnalyzer {
                      const candidateName = element.getAttribute('name');
                      if (candidateName !== parsedAttrs.name) {
                          if (this.debugMode) {
-                             console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict) for ${element.tagName}#${element.id || 'noId'}: name mismatch`);
+                             console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict): name mismatch`);
                          }
                          isValid = false;
                          failureReason = 'name mismatch';
@@ -167,18 +158,18 @@ export class SelectiveDomAnalyzer {
         const duration = performance.now() - checkStartTime;
         if (this.debugMode) {
             if (isValid) {
-                console.log(`[SelectiveDomAnalyzer] Validation PASSED (Strict) for ${element.tagName}#${element.id || 'noId'} (took ${duration.toFixed(2)}ms)`);
+                console.log(`[SelectiveDomAnalyzer] Validation PASSED (Strict) (${duration.toFixed(2)}ms)`);
             } else {
-                console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict) for ${element.tagName}#${element.id || 'noId'}: ${failureReason} (took ${duration.toFixed(2)}ms)`);
+                console.log(`[SelectiveDomAnalyzer] Validation FAILED (Strict): ${failureReason} (${duration.toFixed(2)}ms)`);
             }
         } else if (!isValid) {
-            console.warn(`[SelectiveDomAnalyzer] Validation FAILED (Strict): ${failureReason}`);
+            console.warn(`[SelectiveDomAnalyzer] Validation FAILED: ${failureReason}`);
         }
 
         return isValid;
     }
 
-    // --- Helper Functions (Copied/Adapted from build-dom-tree.js logic) ---
+    // --- Helper Functions ---
 
     // --- Caching Helpers ---
     private static getCachedBoundingRect(element: Element): DOMRect | null {
@@ -225,34 +216,16 @@ export class SelectiveDomAnalyzer {
             return false;
         }
 
-        // Check if the element has zero dimensions, considering potential borders/padding
-        // Use offsetWidth/offsetHeight as it includes borders and padding
+        // Check if the element has zero dimensions
         if (element.offsetWidth <= 0 || element.offsetHeight <= 0) {
-             // Check if it's potentially a container with visible children (less strict)
-             // For simplicity here, we stick to offset dimensions.
             return false;
         }
-
-         // Check if element is within viewport bounds (optional, could be handled separately)
-         // const isInViewport = rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth && rect.right > 0;
-         // if (!isInViewport) return false;
-
-        // Check parent visibility recursively (can be expensive)
-        // let parent = element.parentElement;
-        // while (parent && parent !== document.body) {
-        //     const parentStyle = window.getComputedStyle(parent);
-        //     if (parentStyle.visibility === 'hidden' || parentStyle.display === 'none' || parentStyle.opacity === '0') {
-        //         return false;
-        //     }
-        //     parent = parent.parentElement;
-        // }
 
         return true;
     }
 
     // --- Interactivity Check ---
     private static isInteractiveElement(element: HTMLElement): boolean {
-        // Simplified version of the logic in build-dom-tree.js
          if (!element || element.nodeType !== Node.ELEMENT_NODE) {
             return false;
         }
@@ -282,16 +255,14 @@ export class SelectiveDomAnalyzer {
         // Check if it's a label associated with a form control
         if (tagName === 'label' && element.hasAttribute('for')) {
              const control = document.getElementById(element.getAttribute('for') || '');
-             if (control) return this.isInteractiveElement(control as HTMLElement); // Recurse
+             if (control) return this.isInteractiveElement(control as HTMLElement);
         }
 
-        // Check common patterns for custom interactive elements (less reliable)
+        // Check common patterns for custom interactive elements
         if (element.style.cursor === 'pointer') return true;
-        // Could add class name checks, but that's brittle
 
         return false;
     }
-
 
     // --- Topmost Element Check ---
     private static isTopElement(element: HTMLElement): boolean {
@@ -300,8 +271,7 @@ export class SelectiveDomAnalyzer {
             return false;
         }
 
-        // Check if the element is a common interactive element based on tag name or role
-        // These elements are more likely to be valid targets even if partially obscured
+        // Check if the element is a common interactive element
         const isCommonInteractive = 
             ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName) ||
             ['button', 'link', 'checkbox', 'radio'].includes(element.getAttribute('role') || '');
@@ -313,11 +283,10 @@ export class SelectiveDomAnalyzer {
             element.closest('.mantine-Modal-content') !== null ||
             element.closest('[data-portal="true"]') !== null;
 
-        // For interactive elements in modals, we can be more lenient
-        // as they often have complex layering that might trigger false positives
+        // For interactive elements in modals, be more lenient
         if (isCommonInteractive && isInModal) {
             if (this.debugMode) {
-                console.log(`[SelectiveDomAnalyzer] Element ${element.tagName}#${element.id} is an interactive element in a modal context - skipping strict occlusion check`);
+                console.log(`[SelectiveDomAnalyzer] Interactive element in modal - skipping strict occlusion check`);
             }
             return true;
         }
@@ -339,9 +308,8 @@ export class SelectiveDomAnalyzer {
             }
 
             if (!topElementAtPoint) {
-                // Only log in debug mode
                 if (this.debugMode) {
-                    console.log(`[SelectiveDomAnalyzer] elementFromPoint (center: ${checkX}, ${checkY}) returned null.`);
+                    console.log(`[SelectiveDomAnalyzer] elementFromPoint returned null`);
                 }
                 return false;
             }
@@ -359,11 +327,8 @@ export class SelectiveDomAnalyzer {
                 isRelated = true;
             }
 
-            // If the element is not the top element at its center point,
-            // try checking additional points for robustness
+            // If the element is not the top element, try checking additional points for robustness
             if (!isRelated) {
-                // For buttons and links in modals, check additional points
-                // like top edge, bottom edge, or quarter points
                 if (isCommonInteractive && isInModal) {
                     // Try a few more points before giving up
                     const additionalPoints = [
@@ -395,13 +360,12 @@ export class SelectiveDomAnalyzer {
             }
 
             if (!isRelated) {
-                // Keep log for occlusion failure but only in debug mode
                 if (this.debugMode) {
-                    console.log(`[SelectiveDomAnalyzer] Occlusion detected at center point (${checkX}, ${checkY}). Target ${element.tagName}#${element.id} is not related to the top element ${topElementAtPoint.tagName}#${topElementAtPoint.id}`);
+                    console.log(`[SelectiveDomAnalyzer] Element is occluded at center point`);
                 }
                 return false;
             }
-            return true; // Point check passed
+            return true;
 
         } catch (e) {
             console.warn('[SelectiveDomAnalyzer] Error during elementFromPoint check:', e);
@@ -410,45 +374,37 @@ export class SelectiveDomAnalyzer {
     }
 
     // --- Text Match Helper ---
-     // MODIFIED: Replaced with logic from RobustElementFinder.fuzzyTextMatch
      private static isTextMatch(element: HTMLElement, targetText: string | undefined): boolean {
-        if (targetText === undefined || targetText === null || targetText.trim() === '') return true; // No text to match or empty target text
+        if (targetText === undefined || targetText === null || targetText.trim() === '') return true;
 
-        // Normalize the targetText (from interaction data) by lowercasing, trimming, and removing all whitespace
+        // Normalize the targetText
         const normalizedTargetText = targetText.trim().toLowerCase().replace(/\s+/g, '');
 
         const elementTextContent = (element.textContent || "").trim().toLowerCase().replace(/\s+/g, '');
         const elementInnerText = (element.innerText || "").trim().toLowerCase().replace(/\s+/g, '');
-        // Prefer innerText if available and not empty, otherwise fall back to textContent
         const bestElementText = elementInnerText.length > 0 ? elementInnerText : elementTextContent;
 
         const elementValue = (element as HTMLInputElement).value || '';
         const normalizedElementValue = elementValue.trim().toLowerCase().replace(/\s+/g, '');
-        
-        // Note: SelectiveDomAnalyzer's original isTextMatch didn't check aria-label, maintaining that for now.
-        // If aria-label matching is needed here, it can be added.
 
         if (this.debugMode) {
             console.log(`[SelectiveDomAnalyzer] Text Matching:
     - Target (normalized): "${normalizedTargetText}"
-    - Element Best Text (normalized): "${bestElementText}" (from innerText/textContent)
+    - Element Best Text (normalized): "${bestElementText}"
     - Element Value (normalized): "${normalizedElementValue}"`);
         }
 
-        // The original logic here performed both exact and includes check.
-        // Replicating a similar behavior: check if the normalized element text includes the normalized target.
-        // For a stricter "exact" match like in RobustFinder, the condition would be `===`.
         if (bestElementText.includes(normalizedTargetText)) {
             return true;
         }
-        if (normalizedElementValue.length > 0 && normalizedElementValue.includes(normalizedTargetText)) { // Only check value if it exists
+        if (normalizedElementValue.length > 0 && normalizedElementValue.includes(normalizedTargetText)) {
             return true;
         }
 
-        return false; // No match found
+        return false;
     }
 
-    // --- NEW: Helper methods for viewport detection and scrolling ---
+    // --- Helper methods for viewport detection and scrolling ---
     private static isElementInViewport(element: HTMLElement): boolean {
         const rect = element.getBoundingClientRect();
         return (
@@ -462,9 +418,9 @@ export class SelectiveDomAnalyzer {
     private static scrollElementIntoView(element: HTMLElement): void {
         try {
             element.scrollIntoView({
-                behavior: 'auto', // Use 'auto' for immediate scrolling
-                block: 'center',   // Center the element vertically
-                inline: 'center'   // Center the element horizontally
+                behavior: 'auto',
+                block: 'center',
+                inline: 'center'
             });
         } catch (e) {
             // Fallback for browsers that don't support scrollIntoView with options
@@ -480,5 +436,4 @@ export class SelectiveDomAnalyzer {
             window.scrollTo(scrollX, scrollToY);
         }
     }
-    // --- End new helper methods ---
 } 

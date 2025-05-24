@@ -42,11 +42,7 @@ export default class CursorFlow {
     private copilotButtonOriginalText: string = '';
 
     constructor(options: CursorFlowOptions) {
-      console.log('[CURSOR-FLOW-DEBUG] Initializing with options:', options);
-      console.log('[CURSOR-FLOW-DEBUG] Original buttonText:', options.buttonText);
-      
       if (!options.userId) {
-        console.error('[CURSOR-FLOW-DEBUG] ERROR: userId is required but was not provided');
         throw new Error('userId is required for CursorFlow initialization');
       }
       
@@ -55,18 +51,14 @@ export default class CursorFlow {
         apiKey: options.apiKey, 
         userId: options.userId, 
         theme: options.theme || {},
-        buttonText: options.buttonText || 'Help & Guides', 
-        guidesButtonText: options.guidesButtonText || 'Select Guide',
+        buttonText: options.buttonText,  // Remove fallback - use what's provided
+        guidesButtonText: options.guidesButtonText, // Remove fallback
         debug: options.debug || false
       };
       
-      console.log('[CURSOR-FLOW-DEBUG] Final options after defaults:', this.options);
-      
       if (options.apiClient) {
-        console.log('[CURSOR-FLOW-DEBUG] Using provided ApiClient');
         this.apiClient = options.apiClient;
       } else {
-        console.log('[CURSOR-FLOW-DEBUG] Creating new ApiClient');
         this.apiClient = new ApiClient(
           API_URL, 
           this.options.apiKey,
@@ -83,11 +75,6 @@ export default class CursorFlow {
       };
       
       this.executionTracker = new FlowExecutionTracker(this.apiClient);
-      
-      if (this.options.debug) {
-        console.log('CursorFlow initialized with options:', this.options);
-      }
-      
       this.operationToken = this.generateToken();
     }
     
@@ -173,7 +160,6 @@ export default class CursorFlow {
       if (textSpan) textSpan.textContent = 'Stop Guide';
       
       this.startButton.classList.add('hyphen-stop-guide-active'); 
-      // this.startButton.style.backgroundColor = this.options.theme?.brand_color || '#dc3545'; // Prevent background color change
       this.startButtonIsStopButton = true;
     }
 
@@ -225,7 +211,7 @@ export default class CursorFlow {
         }
       }
 
-      // Revert start button if it was used
+      // Revert start button if it was used - FIXED: Use theme data, not hardcoded fallback
       if (this.startButtonIsStopButton && this.startButton && document.body.contains(this.startButton)) {
         this.startButton.removeEventListener('click', this.stopFromButton);
         if (this.originalStartButtonOnClick) {
@@ -233,7 +219,10 @@ export default class CursorFlow {
         }
         
         const textSpan = this.startButton.querySelector('.hyphen-text') as HTMLElement;
-        if (textSpan) textSpan.textContent = this.options.buttonText || 'Help & Guides';
+        // CRITICAL FIX: Use theme button_text instead of hardcoded fallback
+        if (textSpan) {
+          textSpan.textContent = this.options.theme?.button_text || this.options.buttonText || '';
+        }
         
         this.startButton.classList.remove('hyphen-stop-guide-active');
         this.startButton.style.backgroundColor = '#ffffff';
@@ -259,7 +248,6 @@ export default class CursorFlow {
     // Add missing fetchGuides method
     private async fetchGuides() {
       try {
-        // This would typically fetch guides from the API
         this.debugLog('Fetching guides...');
         // For now, just return since the specific implementation depends on your API
         return [];
@@ -273,44 +261,55 @@ export default class CursorFlow {
       try {
         const isHealthy = await this.apiClient.checkHealth();
         if (!isHealthy) {
-          console.error('API is not available');
+          console.error('[CursorFlow] API health check failed');
           return false;
         }
         
-        if (this.options.debug) {
-          console.log('API health check successful');
-        }
-        
+        // Check for auto-start after navigation
         let needsAutoStart = false;
-        let autoStartGuideId: string | null = null; // Renamed from redirectGuideId
+        let autoStartGuideId: string | null = null;
+        let autoStartToken: string | null = null;
+        
+        try {
+          const autoStartData = sessionStorage.getItem('hyphen-auto-start-guide');
+          if (autoStartData) {
+            const parsed = JSON.parse(autoStartData);
+            // Check if data is recent (within 30 seconds to handle slow navigations)
+            if (Date.now() - parsed.timestamp < 30000) {
+              needsAutoStart = true;
+              autoStartGuideId = parsed.guideId;
+              autoStartToken = parsed.token;
+              this.debugLog('Found auto-start guide data:', parsed);
+            }
+            // Clear the data regardless of age
+            sessionStorage.removeItem('hyphen-auto-start-guide');
+          }
+        } catch (error) {
+          console.warn('Error checking auto-start data:', error);
+        }
         
         const savedState = StateManager.restore();
         if (savedState) {
           this.state = savedState;
           if (this.state.isPlaying && !StateManager.isSessionActive()) {
-            console.log('Tab was closed, resetting playing state');
             this.setIsPlaying(false, true); 
           }
-          if (this.options.debug) console.log('Restored state:', this.state);
+          this.debugLog('Restored state:', this.state);
         }
         
-        this.debugLog('Fetching organization theme...');
         try {
           const fetchedTheme = await this.apiClient.getOrganizationTheme();
           if (fetchedTheme) {
-            // Convert null values to undefined for TypeScript compatibility
             const normalizedTheme = {
               ...fetchedTheme,
               button_position: fetchedTheme.button_position || undefined,
               button_text: fetchedTheme.button_text || undefined,
             };
             this.options.theme = { ...this.options.theme, ...normalizedTheme }; 
-            this.debugLog('Successfully fetched and merged theme:', this.options.theme);
-          } else {
-            this.debugLog('Theme fetch returned null or failed. Using default/existing theme options.');
+            this.debugLog('Theme fetched and applied');
           }
         } catch (themeError) {
-          console.error('Error fetching organization theme during init:', themeError);
+          console.error('[CursorFlow] Failed to fetch organization theme:', themeError);
         }
         
         await this.fetchGuides();
@@ -331,31 +330,36 @@ export default class CursorFlow {
         
         if (this.state.isPlaying && this.state.recordingId) {
           this.setIsPlaying(true);
-          console.log('Guide is active from restored state, loading recording');
           await this.loadRecording(this.state.recordingId);
           this.setupNavigationDetection();
-          console.log('Active guide detected, finding appropriate step to play');
           setTimeout(() => {
             this.handleNavigation(true); 
           }, 500);
         }
         
+        // Auto-start guide after navigation
+        if (needsAutoStart && autoStartGuideId && autoStartToken) {
+          this.debugLog('Auto-starting guide after navigation:', autoStartGuideId);
+          // Small delay to ensure page is ready
+          setTimeout(() => {
+            this.startGuideById(autoStartGuideId!);
+          }, 1000);
+        }
+        
         return true;
       } catch (error) {
-        console.error('Failed to initialize CursorFlow:', error);
+        console.error('[CursorFlow] Initialization failed:', error);
         return false;
       }
     }
 
     private ensureStartButtonExists(): void {
       if (this.startButton && document.body.contains(this.startButton)) {
-        console.log('[CURSOR-FLOW-DEBUG] Start button already exists.');
         return;
       }
       
       const existingButton = document.querySelector('.hyphen-start-button') as HTMLElement;
       if (existingButton) {
-        console.log('[CURSOR-FLOW-DEBUG] Found existing start button in DOM.');
         this.startButton = existingButton;
         this.startButton.removeEventListener('click', this.handleToggleClick); 
         this.startButton.addEventListener('click', this.handleToggleClick);
@@ -365,10 +369,8 @@ export default class CursorFlow {
         return;
       }
       
-      // Use button text from theme if available, fallback to options.buttonText, then to default
-      const buttonText = this.options.theme?.button_text || this.options.buttonText || 'Help & Guides';
-      console.log('[CURSOR-FLOW-DEBUG] Creating new start button with text:', buttonText);
-      console.log('[CURSOR-FLOW-DEBUG] Creating new start button with theme:', this.options.theme);
+      // Use theme button_text without fallback - trust the database defaults
+      const buttonText = this.options.theme?.button_text || this.options.buttonText || '';
       
       this.startButton = CursorFlowUI.createStartButton(
           buttonText,
@@ -388,12 +390,10 @@ export default class CursorFlow {
   
     private updateButtonState() {
       if (!this.startButton || !document.body.contains(this.startButton)) {
-          console.error('[CURSOR-FLOW-DEBUG] Attempted to update button state, but button not found or not in DOM.');
           return; 
       }
       
       if (!this.state.isPlaying && !this.startButtonIsStopButton) {
-        this.debugLog('Updating button state to default (not playing, not stop button).');
         let textSpan = this.startButton.querySelector('.hyphen-text');
         if (!textSpan) {
             textSpan = document.createElement('span');
@@ -406,14 +406,12 @@ export default class CursorFlow {
             }
         }
         
-        // Use button text from theme if available, fallback to options.buttonText, then to default
-        const buttonText = this.options.theme?.button_text || this.options.buttonText || 'Help & Guides';
+        // Use theme button_text without hardcoded fallback
+        const buttonText = this.options.theme?.button_text || this.options.buttonText || '';
         textSpan.textContent = buttonText;
         
         this.startButton.classList.remove('hyphen-stop-guide-active');
         this.startButton.style.backgroundColor = '#ffffff';
-      } else {
-        this.debugLog('Button state update skipped (either playing or button is stop button).');
       }
     }
 
@@ -458,8 +456,7 @@ export default class CursorFlow {
       this.isDropdownOpen = false;
       const existingDropdown = document.getElementById('hyphen-guides-dropdown');
       if (existingDropdown) existingDropdown.remove();
-      // No longer need to remove 'hyphen_redirect_guide_id' from localStorage here as it's not being set.
-      // try { localStorage.removeItem('hyphen_redirect_guide_id'); } catch (err) { console.warn('Failed to clear redirect ID on stop:', err); }
+
       if (this.thinkingIndicator) { CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator); this.thinkingIndicator = null; }
       this.isLoadingGuide = false;
       this.stopValidationLoop();
@@ -532,11 +529,9 @@ export default class CursorFlow {
         
         // Sort steps
         if (this.recording && this.recording.steps) {
-          console.time('Sort steps');
           this.sortedSteps = [...this.recording.steps].sort((a, b) => {
             return (a.position || 0) - (b.position || 0);
           });
-          console.timeEnd('Sort steps');
         }
         
         // Final token check before proceeding
@@ -596,6 +591,30 @@ export default class CursorFlow {
             // User is not on the correct starting page
             this.debugLog('URL CHECK FAILED: User is not on the correct starting page for the guide.');
             
+            // OPTION 3: Try to find the first step element on current page before navigating
+            try {
+              this.debugLog('Attempting intelligent element detection on current page...');
+              const firstStepCandidates = await RobustElementFinder.findCandidates(firstStep.interaction);
+              
+              if (firstStepCandidates.length > 0) {
+                this.debugLog('SUCCESS: Found target element on current page! Starting guide here.');
+                // Element found on current page - we can start the guide here!
+                // Hide thinking indicator before starting
+                if (this.thinkingIndicator) {
+                  CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
+                  this.thinkingIndicator = null;
+                }
+                // Start the guide normally - element exists here
+                await this.startGuide(guideId, token);
+                return;
+              } else {
+                this.debugLog('Element not found on current page, proceeding with navigation...');
+              }
+            } catch (elementError) {
+              this.debugLog('Error during element detection:', elementError);
+              // Continue with navigation fallback
+            }
+            
             // Hide thinking indicator before showing notification
             if (this.thinkingIndicator) {
               CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
@@ -603,22 +622,16 @@ export default class CursorFlow {
             }
             
             if (targetUrl) {
-              this.debugLog(`Navigating to target URL: ${targetUrl} using history.pushState`);
-              history.pushState({}, '', targetUrl);
-              // After pushState, the handleNavigation method (if set up correctly) should detect the URL change
-              // and proceed with loading the guide. We still call startGuide to ensure the process continues.
-              // We might need a small delay for the URL change to be processed by navigation handlers.
+              this.debugLog(`Navigating to target URL: ${targetUrl} using window.location.href`);
+              // Store the guide info so we can auto-start after navigation
+              sessionStorage.setItem('hyphen-auto-start-guide', JSON.stringify({
+                guideId,
+                token,
+                timestamp: Date.now()
+              }));
               
-              // No longer storing hyphen_redirect_guide_id in localStorage.
-              
-              // We will proceed to startGuide, which will then likely call playCurrentStep.
-              // handleNavigation should ideally pick up the change and find the correct step.
-              // Let's call handleNavigation explicitly to ensure it re-evaluates context.
-              this.handleNavigation(true); // Pass true to indicate we want to continue through steps.
-              // Then, call startGuide to ensure the guide machinery is fully initialized for the new URL.
-              // This might seem redundant if handleNavigation works perfectly, but ensures robustness.
-              // await this.startGuide(guideId, token); // This might be too soon, let handleNavigation do its job.
-              return; // Exit retrieveGuideData as navigation logic will take over.
+              window.location.href = targetUrl;
+              return;
             } else {
               // No redirect URL available
               CursorFlowUI.showNotification({
@@ -674,22 +687,13 @@ export default class CursorFlow {
         
         // Pre-sort steps once and cache them 
         if (this.recording && this.recording.steps) {
-          console.time('Sort steps');
           this.sortedSteps = [...this.recording.steps].sort((a, b) => {
             return (a.position || 0) - (b.position || 0);
           });
-          console.timeEnd('Sort steps');
         }
-        
-        // Preserve completedSteps when it's the same recording ID
-        // const preserveSteps = this.state.recordingId === recordingId ? this.state.completedSteps : [];
-        // StateManager.restore already handles loading existing state, including completedSteps
         
         // Update state recordingId only (isPlaying is handled elsewhere)
         this.state.recordingId = recordingId;
-        // this.state.isPlaying = true; // NO - isPlaying is set by the caller (init or dropdown)
-        // this.state.currentStep = 0; // No - state restore handles this or handleNavigation adjusts it
-        // this.state.completedSteps = preserveSteps; // No - state restore handles this
         
         // Save state immediately since this is an important transition?
         // Let StateManager handle debouncing unless immediate needed
@@ -697,7 +701,6 @@ export default class CursorFlow {
         
         if (this.options.debug) {
           this.debugLog('Recording loaded:', recordingId, flowData);
-          // this.debugLog('Preserved completed steps:', preserveSteps);
         }
         
         return flowData;
@@ -763,9 +766,6 @@ export default class CursorFlow {
         // Setup navigation detection
         this.setupNavigationDetection();
         
-        // Update button state (setIsPlaying already did this)
-        // this.updateButtonState();
-        
         // Play first step
         await this.playCurrentStep();
         
@@ -790,7 +790,6 @@ export default class CursorFlow {
       }
       
       // Find steps that match the current URL without excessive logging
-      console.time('Find matching steps');
       // Use cached sortedSteps instead of re-filtering recording.steps
       const matchingSteps = this.sortedSteps.filter((step: any) => {
         // The pageInfo is inside the interaction object
@@ -807,7 +806,6 @@ export default class CursorFlow {
         // Return true if either URL or path matches
         return urlMatches || pathMatches;
       });
-      console.timeEnd('Find matching steps');
       
       if (matchingSteps.length === 0) {
         if (this.options.debug) {
@@ -816,7 +814,6 @@ export default class CursorFlow {
         return null;
       }
       
-      console.time('Find uncompleted step');
       // Find the earliest uncompleted step for this URL
       const uncompletedSteps = matchingSteps.filter((step: any) => {
         const stepIndex = step.position || 0;
@@ -827,13 +824,11 @@ export default class CursorFlow {
         // Get earliest uncompleted step by position
         // The steps are already sorted, so just take the first one
         const earliestStep = uncompletedSteps[0];
-        console.timeEnd('Find uncompleted step');
         return earliestStep;
       }
       
       // All steps for this URL are completed, return the last step for navigation context
       // Since we know sortedSteps is sorted by position, we can use the last matching step
-      console.timeEnd('Find uncompleted step');
       return matchingSteps[matchingSteps.length - 1];
     }
   
@@ -845,9 +840,6 @@ export default class CursorFlow {
     }
     
     private async playCurrentStep() {
-      // ADDED: Log this.options.debug at the start of the function
-      this.debugLog(`[DEBUG-VERIFY] playCurrentStep called. this.options.debug = ${this.options.debug}`);
-
       // Ensure any previous validation loop is stopped before starting a new step
       this.stopValidationLoop();
 
@@ -863,66 +855,62 @@ export default class CursorFlow {
       }
       
       // Get current step from recording
-      let currentStep: any; // Use 'any' for simplicity or define a proper Step type
+      let currentStep: any;
        if (this.recording.steps && this.recording.steps.length > 0) {
           // Find the current step based on state.currentStep and sortedSteps
-          // Find step by position if available
           if (this.sortedSteps[0]?.position !== undefined) {
               const targetPosition = this.sortedSteps[this.state.currentStep]?.position;
               if (targetPosition !== undefined) {
-                   // Find the actual step object matching the position from the potentially incomplete state.currentStep index
                   currentStep = this.sortedSteps.find(step => step.position === targetPosition);
-                  // If the direct index didn't work (e.g., after skip), find the first uncompleted
                   if (!currentStep || this.state.completedSteps.includes(currentStep.position)) {
                       currentStep = this.sortedSteps.find(step => !this.state.completedSteps.includes(step.position));
                   }
               } else {
-                   // Fallback if position is missing unexpectedly
                    currentStep = this.sortedSteps[this.state.currentStep];
               }
           } else {
-              // Index-based fallback
               currentStep = this.sortedSteps[this.state.currentStep];
           }
        }
 
-
       if (!currentStep) {
-          // Potentially all steps completed or state is inconsistent
-           const nextStep = this.findNextStep(); // Check if there's logically a next step
+           const nextStep = this.findNextStep();
           if (nextStep) {
               currentStep = nextStep;
-              // Update state.currentStep to match the found next step's index in sortedSteps
               this.state.currentStep = this.sortedSteps.findIndex(step => step === nextStep);
-              this.debugLog(`State inconsistency? Found next logical step at index ${this.state.currentStep}, position ${currentStep.position}. Proceeding.`);
-              StateManager.saveWithDebounce(this.state); // Save corrected state
+              this.debugLog(`State inconsistency resolved - found next step at index ${this.state.currentStep}`);
+              StateManager.saveWithDebounce(this.state);
           } else {
-              console.warn('[CursorFlow] No current or next step found. Guide might be complete or state is invalid.');
-              this.completeGuide(); // Assume completion if no steps left
+              console.warn('[CursorFlow] No current or next step found. Guide might be complete');
+              this.completeGuide();
               return false;
           }
       }
 
-
       this.debugLog(`Playing step ${this.state.currentStep} (Position: ${currentStep.position || 'N/A'})`);
 
+      // Check if this is a navigation step
+      const interaction = currentStep.interaction || {};
+      if (interaction.type === 'navigation' || interaction.interaction_type === 'navigation') {
+        this.debugLog('Detected navigation step, handling navigation...');
+        return this.handleNavigationStep(currentStep);
+      }
+
       // Find target element from interaction data
-      const interaction = currentStep.interaction || {}; // interaction object also contains isHighlightStep
-      // Ensure interaction text is populated if available in element data
       if (!interaction.text && interaction.element?.textContent) {
           interaction.text = interaction.element.textContent;
       }
       this.debugLog('Interaction data:', JSON.stringify(interaction));
 
       // Determine if this is a highlight step and if it's the last step
-      const isHighlightStep = !!currentStep.is_highlight_step; // CORRECTED: Access directly from currentStep
+      const isHighlightStep = !!currentStep.is_highlight_step;
       const isLastStep = this.state.currentStep >= this.sortedSteps.length - 1 || 
                          (this.sortedSteps.findIndex(step => !this.state.completedSteps.includes(step.position)) === -1 && 
                          this.sortedSteps.indexOf(currentStep) === this.sortedSteps.length -1 );
 
       this.debugLog(`Step flags: isHighlightStep=${isHighlightStep}, isLastStep=${isLastStep}`);
 
-      // Before we search for elements, check if navigation is expectedx
+      // Before we search for elements, check if navigation is expected
       const expectedPath = interaction.pageInfo?.path;
       const currentPath = window.location.pathname;
       const isNavigationExpected = expectedPath && expectedPath !== currentPath;
@@ -931,23 +919,20 @@ export default class CursorFlow {
           this.debugLog(`Navigation expected from ${currentPath} to ${expectedPath}`);
       }
 
-      // --- Use RobustElementFinder to get candidates ---
+      // Use RobustElementFinder to get candidates
       this.debugLog('Finding candidate elements using RobustElementFinder...');
-      console.time('Find candidate elements');
-      // ADDED: Log the debug value being passed
       const debugValueForFinder = this.options.debug || false;
-      this.debugLog(`[DEBUG-VERIFY] Passing debug=${debugValueForFinder} to RobustElementFinder.setDebugMode`);
+      this.debugLog(`Passing debug=${debugValueForFinder} to RobustElementFinder.setDebugMode`);
       RobustElementFinder.setDebugMode(debugValueForFinder);
       let candidateElements = await RobustElementFinder.findCandidates(interaction);
-      console.timeEnd('Find candidate elements');
       this.debugLog(`RobustFinder found ${candidateElements.length} candidate(s).`);
 
       let finalTargetElement: HTMLElement | null = null;
 
-      // --- Validate candidates using SelectiveDomAnalyzer ---
+      // Validate candidates using SelectiveDomAnalyzer
       if (candidateElements.length > 0) {
           this.debugLog('Validating candidate(s) using SelectiveDomAnalyzer...');
-          SelectiveDomAnalyzer.clearCache(); // Clear cache for this step's validation
+          SelectiveDomAnalyzer.clearCache();
           SelectiveDomAnalyzer.setDebugMode(this.options.debug || false);
 
           const validCandidates: HTMLElement[] = [];
@@ -955,120 +940,91 @@ export default class CursorFlow {
               if (SelectiveDomAnalyzer.validateCandidateElement(candidate, interaction)) {
                   validCandidates.push(candidate);
               }
-              // Logging for failed validation happens inside SelectiveDomAnalyzer if debugMode is on
           }
 
           if (validCandidates.length === 1) {
               this.debugLog('Validation successful: 1 valid candidate found.');
               finalTargetElement = validCandidates[0];
           } else if (validCandidates.length > 1) {
-              console.warn(`[CursorFlow] Ambiguity detected: ${validCandidates.length} candidates passed validation.`);
+              console.warn(`[CursorFlow] ${validCandidates.length} candidates passed validation - using first one`);
               this.debugLog('Candidates passing validation:', validCandidates.map(el => el.outerHTML.substring(0, 100) + '...'));
-              // **** Future: Add LLM or other disambiguation logic here ****
-              // For now, pick the first valid candidate as a fallback
               finalTargetElement = validCandidates[0];
-              console.log('[CursorFlow] Fallback: Picking the first valid candidate.');
           } else {
-              // No candidates passed validation
               this.debugLog('Validation failed: No candidates passed deeper checks.');
               finalTargetElement = null;
           }
       } else {
-           // No initial candidates found
           this.debugLog('Validation skipped: RobustFinder found no initial candidates.');
           finalTargetElement = null;
       }
-      // --- End Validation ---
 
       // Set the determined target element
       this.currentTargetElement = finalTargetElement;
 
-      // --- Handle Outcome ---
+      // Handle Outcome
       if (!this.currentTargetElement) {
-          console.warn('[CursorFlow] Target element could not be definitively determined for step:', currentStep);
+          console.warn('[CursorFlow] Target element could not be found for step:', currentStep);
           if (isNavigationExpected) {
-              this.debugLog('Element not found/validated, but navigation is expected. Allowing navigation.');
-              // Don't show error UI if navigation is the expected next action
+              this.debugLog('Element not found but navigation is expected. Allowing navigation.');
               return true; // Allow potential navigation to proceed without error UI
           }
-          // Only show error UI if navigation wasn't expected
-          console.log('DOM content at time of search:', document.body.innerHTML.substring(0, 500) + '...');
           this.handleInteractionError();
           return false;
       }
 
-      // ADDED: Scroll into view logic *after* validation, *before* showing visuals
+      // Scroll into view logic
       try {
           if (!this.isElementPartiallyInViewport(this.currentTargetElement)) {
-              this.debugLog('[CursorFlow] Target element not in viewport, attempting to scroll...');
-              // Use the helper from RobustElementFinder (keeping it there for now)
-              // Alternatively, implement scroll logic directly in CursorFlowUI or here
+              this.debugLog('Target element not in viewport, attempting to scroll...');
               const scrolledCandidates = await RobustElementFinder.ensureCandidatesInView([this.currentTargetElement]);
               if (scrolledCandidates.length === 0) {
-                   console.warn('[CursorFlow] Failed to scroll the validated element into view.');
-                   // Decide if this is critical enough to stop
-                   // For now, let's proceed but log the warning. The validation loop might catch issues.
+                   console.warn('[CursorFlow] Failed to scroll element into view');
               } else {
-                   this.debugLog('[CursorFlow] Scroll attempt finished.');
+                   this.debugLog('Scroll attempt finished.');
               }
 
-              // Short delay for scroll settling might still be useful
               await new Promise(resolve => setTimeout(resolve, 150)); 
 
-              // Re-check connection and visibility after scroll attempt
               if (!this.currentTargetElement.isConnected) {
-                   this.debugLog('[CursorFlow] CRITICAL: Target element disconnected after scroll attempt!');
-                   this.handleInteractionError(); // Use existing error handler
+                   this.debugLog('Target element disconnected after scroll attempt!');
+                   this.handleInteractionError();
                    return false;
               }
-              // Optionally re-check viewport if needed, but partial visibility check is lenient
-              // if (!this.isElementPartiallyInViewport(this.currentTargetElement)) {
-              //    console.warn('[CursorFlow] Element still not sufficiently visible after scroll.');
-              // }
           } else {
-              this.debugLog('[CursorFlow] Target element already sufficiently in viewport. No scroll needed.');
+              this.debugLog('Target element already in viewport. No scroll needed.');
           }
       } catch (scrollError) {
-           console.error('[CursorFlow] Error during scroll attempt:', scrollError);
-           // Continue execution? Or handle as error? Let's continue for now.
+           console.error('[CursorFlow] Error during scroll:', scrollError);
       }
-      // --- End Scroll Logic ---
 
       // Proceed ONLY if element is still valid after potential scroll
       if (!this.currentTargetElement || !this.currentTargetElement.isConnected) {
-           this.debugLog('[CursorFlow] Target element became invalid after scroll checks. Aborting step.');
+           this.debugLog('Target element became invalid after scroll checks. Aborting step.');
            this.handleInteractionError();
            return false;
        }
 
       this.debugLog('Successfully identified target element:', this.currentTargetElement.outerHTML.substring(0, 150) + '...');
 
-      console.time('Show visual elements');
       const currentToken = this.operationToken; 
-      // Pass currentStep.annotation as the displayText argument
       await this.showVisualElements(this.currentTargetElement, currentStep.interaction, currentStep.annotation || '', isHighlightStep, isLastStep);
-      console.timeEnd('Show visual elements');
       
       // Check token again after showing visuals, before setting up interaction
       if (this.operationToken !== currentToken) { 
-          this.debugLog(`[playCurrentStep] Operation cancelled after showVisualElements. Aborting interaction setup.`);
-          // Explicitly clean up visuals shown if cancelled mid-step
+          this.debugLog(`Operation cancelled after showVisualElements. Aborting interaction setup.`);
           this.hideVisualElements(); 
           return false; 
       }
 
       if (isHighlightStep) {
-        this.debugLog('[CursorFlow] Setting up highlight step completion (Next/Finish button).');
+        this.debugLog('Setting up highlight step completion (Next/Finish button).');
         this.setupHighlightStepCompletion(isLastStep);
       } else {
-        this.debugLog('[CursorFlow] Setting up standard element interaction tracking.');
-        console.time('Setup interaction tracking');
+        this.debugLog('Setting up standard element interaction tracking.');
         this.setupElementInteractionTracking(this.currentTargetElement, interaction);
-        console.timeEnd('Setup interaction tracking');
       }
 
-      // Start the validation loop *after* visuals and tracking are set up
-      // Only start validation loop for non-highlight steps where element interaction is expected
+      // Start the validation loop for non-highlight steps
       if (!isHighlightStep) {
         this.startValidationLoop();
       }
@@ -1078,19 +1034,11 @@ export default class CursorFlow {
   
     private async showVisualElements(
       targetElement: HTMLElement | null,
-      interactionForContext: InteractionData, // Renamed to avoid confusion, primarily for context/flags
-      displayText: string, // Explicit parameter for display text
+      interactionForContext: InteractionData,
+      displayText: string,
       isHighlightStep: boolean,
       isLastStep: boolean
     ): Promise<void> {
-      console.log('[CursorFlow] [VISUAL-ELEMENTS] showVisualElements called with:', {
-        element: targetElement ? `${targetElement.tagName}#${targetElement.id || 'noId'}` : 'null',
-        displayedText: displayText, // Log the actual text being displayed
-        isHighlightStep,
-        isLastStep,
-        theme: this.options.theme
-      });
-
       const existingPopup = document.getElementById('hyphenbox-text-popup');
       if (existingPopup && existingPopup.parentNode) {
         existingPopup.parentNode.removeChild(existingPopup);
@@ -1101,8 +1049,6 @@ export default class CursorFlow {
       }
 
       if (isHighlightStep) {
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Handling highlight step.');
-
         if (targetElement && targetElement.isConnected) {
           if (!this.highlightElement) {
             this.highlightElement = CursorFlowUI.createHighlight(this.options.theme || {});
@@ -1112,22 +1058,17 @@ export default class CursorFlow {
           }
           CursorFlowUI.positionHighlightOnElement(targetElement, this.highlightElement);
           if(this.highlightElement) this.highlightElement.style.display = 'block';
-          console.log('[CursorFlow] [VISUAL-ELEMENTS] Highlight shown for highlight step.');
         } else {
-          console.log('[CursorFlow] [VISUAL-ELEMENTS] No targetElement or element not connected for highlight step. Skipping highlight.');
           if (this.highlightElement) {
             this.highlightElement.style.display = 'none';
           }
         }
 
-        // Use displayText for the guidance card
         this.guidanceCardElement = CursorFlowUI.createGuidanceCard(displayText || 'Please follow the instruction.', isLastStep, this.options.theme || {});
         if (this.guidanceCardElement) {
-          document.body.appendChild(this.guidanceCardElement); // Append to DOM first
-          // Now call positionGuidanceCard, passing the targetElement (which can be null)
+          document.body.appendChild(this.guidanceCardElement);
           CursorFlowUI.positionGuidanceCard(this.guidanceCardElement, targetElement);
         }
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Guidance card shown and positioned for highlight step.');
 
         if (this.cursorElement || document.getElementById('hyphenbox-cursor-wrapper')) { 
           const cursorWrapper = document.getElementById('hyphenbox-cursor-wrapper');
@@ -1136,13 +1077,10 @@ export default class CursorFlow {
           }
           this.cursorElement = null;
         }
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Cursor explicitly hidden/removed for highlight step.');
 
       } else {
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Handling interactive (non-highlight) step.');
-
         if (!targetElement || !targetElement.isConnected) {
-          console.warn('[CursorFlow] [VISUAL-ELEMENTS] Target element not found or not connected for interactive step. Aborting visual elements.');
+          console.warn('[CursorFlow] Target element not found for interactive step');
           CursorFlowUI.cleanupAllUI(true, true);
           return;
         }
@@ -1150,10 +1088,8 @@ export default class CursorFlow {
         if (!this.cursorElement) {
           this.cursorElement = CursorFlowUI.createCursor(this.options.theme || {});
         }
-        // Pass interactionForContext for cursor positioning if it contains element details
         CursorFlowUI.moveCursorToElement(targetElement, this.cursorElement, interactionForContext);
         if(this.cursorElement) this.cursorElement.style.display = 'block';
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Cursor shown for interactive step.');
 
         if (!this.highlightElement) {
           this.highlightElement = CursorFlowUI.createHighlight(this.options.theme || {});
@@ -1163,19 +1099,12 @@ export default class CursorFlow {
         }
         CursorFlowUI.positionHighlightOnElement(targetElement, this.highlightElement);
         if(this.highlightElement) this.highlightElement.style.display = 'block';
-        console.log('[CursorFlow] [VISUAL-ELEMENTS] Highlight shown for interactive step.');
         
-        // Use displayText for the text popup
         if (displayText) { 
           this.textPopupElement = CursorFlowUI.createTextPopup(displayText, this.options.theme || {});
           if (this.cursorElement && this.textPopupElement) {
               CursorFlowUI.positionTextPopupNearCursor(this.cursorElement, this.textPopupElement);
-              console.log('[CursorFlow] [VISUAL-ELEMENTS] Text popup shown for interactive step.');
-          } else {
-              console.warn('[CursorFlow] [VISUAL-ELEMENTS] Cursor or text popup element missing for positioning.');
           }
-        } else {
-          console.log('[CursorFlow] [VISUAL-ELEMENTS] No display text provided for interactive step popup.');
         }
       }
     }
@@ -1194,13 +1123,13 @@ export default class CursorFlow {
       // Don't reset cursorElement if keepCursor is true
 
       if (this.options.debug) {
-        console.log(`Visual elements hidden/cleaned up ${keepCursor ? '(keeping cursor)' : '(removing cursor)'}`);
+        this.debugLog(`Visual elements hidden/cleaned up ${keepCursor ? '(keeping cursor)' : '(removing cursor)'}`);
       }
     }
   
     private setupNavigationDetection() {
       if (this.options.debug) {
-        console.log('Setting up navigation detection');
+        this.debugLog('Setting up navigation detection');
       }
       
       // Use history API to detect navigation events
@@ -1211,7 +1140,7 @@ export default class CursorFlow {
       history.pushState = (...args) => {
         originalPushState.apply(history, args);
         if (this.options.debug) {
-          console.log('pushState called, args:', args);
+          this.debugLog('pushState called, args:', args);
         }
         this.handleNavigation();
       };
@@ -1220,7 +1149,7 @@ export default class CursorFlow {
       history.replaceState = (...args) => {
         originalReplaceState.apply(history, args);
         if (this.options.debug) {
-          console.log('replaceState called, args:', args);
+          this.debugLog('replaceState called, args:', args);
         }
         this.handleNavigation();
       };
@@ -1228,38 +1157,31 @@ export default class CursorFlow {
       // Listen for popstate event (browser back/forward buttons)
       window.addEventListener('popstate', () => {
         if (this.options.debug) {
-          console.log('popstate event triggered');
+          this.debugLog('popstate event triggered');
         }
         this.handleNavigation();
       });
       
       if (this.options.debug) {
-        console.log('Navigation detection set up');
+        this.debugLog('Navigation detection set up');
       }
     }
   
     private handleNavigation(continueThroughSteps = false) {
       if (!this.state.isPlaying || this.isHandlingNavigation || this.invalidationInProgress) {
-        console.log('handleNavigation: Initial check failed - Not playing, already handling, or invalidation in progress. Returning early');
         return;
       }
       
       this.isHandlingNavigation = true;
-      console.log('handleNavigation: Current URL:', window.location.href);
-      console.time('Navigation handling');
       
       setTimeout(async () => {
-        // **** ADDED CHECK INSIDE TIMEOUT ****
         // Check if stop() was called while we were waiting for the timeout
         if (!this.state.isPlaying) {
-            console.log('handleNavigation: state.isPlaying is false after timeout. Aborting navigation handling.');
-            this.isHandlingNavigation = false; // Ensure flag is reset
-            console.timeEnd('Navigation handling'); // End timer here
+            this.isHandlingNavigation = false;
             return;
         }
           
         try {
-          console.time('Check completed steps');
           // Check if we have completed the previous step and moved to a new URL
           if (this.state.completedSteps.length > 0) {
             const lastCompletedPosition = this.state.completedSteps[this.state.completedSteps.length - 1];
@@ -1280,48 +1202,34 @@ export default class CursorFlow {
               
               // Fast path check
               if (nextStepPath && nextStepPath === currentPath) {
-                console.log('handleNavigation: Path match found');
                 this.state.currentStep = this.recording.steps.indexOf(nextExpectedStep);
-                console.timeEnd('Check completed steps');
-                console.time('Play step');
                 // IMPORTANT: Added visual cleanup before playing next step
                 this.hideVisualElements();
-                console.log('handleNavigation: Cleaned up visuals before playing next step');
                 await this.playCurrentStep();
-                console.timeEnd('Play step');
-                console.timeEnd('Navigation handling');
                 this.isHandlingNavigation = false;
                 return;
               }
             }
           }
-          console.timeEnd('Check completed steps');
           
           // Only run detectCurrentContext if needed
-          console.time('Detect context');
           const contextStep = await this.detectCurrentContext();
-          console.timeEnd('Detect context');
           
           if (contextStep) {
-            console.time('Process context step');
             // Found a matching step for this URL
-            console.log('handleNavigation: Found matching step for this URL');
             const stepIndex = contextStep.position || this.recording.steps.indexOf(contextStep);
             
             // Check if this is a backward navigation to a completed step
             const isBackNavigation = this.state.completedSteps.includes(stepIndex);
             
             if (isBackNavigation) {
-              console.log('handleNavigation: Back navigation detected, showing step again');
               this.state.currentStep = this.recording.steps.indexOf(contextStep);
               // IMPORTANT: Added visual cleanup before re-showing the same step
               this.hideVisualElements();
-              console.log('handleNavigation: Cleaned up visuals before re-showing same step');
               
               // *** ADDED CHECK ***
               const stepPlayedSuccessfully = await this.playCurrentStep();
               if (!stepPlayedSuccessfully) {
-                console.log('handleNavigation: playCurrentStep failed after back navigation. Stopping guide.');
                 this.stop({
                     message: 'Guide stopped: Element for this step could not be found or validated.',
                     type: 'error',
@@ -1329,8 +1237,6 @@ export default class CursorFlow {
                 });
                 // Exit navigation handling early
                  this.isHandlingNavigation = false; 
-                 console.timeEnd('Process context step'); // End timer here before returning
-                 console.timeEnd('Navigation handling');
                  return;
               }
             } else {
@@ -1341,16 +1247,13 @@ export default class CursorFlow {
               });
               
               if (prerequisitesMet) {
-                console.log('handleNavigation: Prerequisites met, playing step');
                 this.state.currentStep = this.recording.steps.indexOf(contextStep);
                 // IMPORTANT: Added visual cleanup before playing step in forward navigation
                 this.hideVisualElements();
-                console.log('handleNavigation: Cleaned up visuals before forward navigation step');
                 
                  // *** ADDED CHECK ***
                  const stepPlayedSuccessfully = await this.playCurrentStep();
                  if (!stepPlayedSuccessfully) {
-                    console.log('handleNavigation: playCurrentStep failed during forward navigation. Stopping guide.');
                     this.stop({
                         message: 'Guide stopped: Element for this step could not be found or validated.',
                         type: 'error',
@@ -1358,16 +1261,11 @@ export default class CursorFlow {
                     });
                      // Exit navigation handling early
                      this.isHandlingNavigation = false; 
-                     console.timeEnd('Process context step'); // End timer here before returning
-                     console.timeEnd('Navigation handling');
                      return;
                 }
               } else {
-                console.log('handleNavigation: Prerequisites not met, showing warning');
-                
                 // IMPORTANT: Added visual cleanup before showing error
                 this.hideVisualElements();
-                console.log('handleNavigation: Cleaned up visuals before prerequisites warning');
                 
                 // Find first incomplete step more efficiently
                 const firstIncompleteStep = this.sortedSteps.find((step: any) => {
@@ -1396,26 +1294,20 @@ export default class CursorFlow {
                 });
               }
             }
-            console.timeEnd('Process context step');
           } else {
-            console.log('handleNavigation: No matching steps for this URL');
             // Check if all steps are completed
-            console.time('Check completion');
             const allSteps = this.recording.steps || [];
             const allCompleted = allSteps.every((step: { position?: number }) => {
                 const stepPosition = step.position || 0;
                 return this.state.completedSteps.includes(stepPosition);
             });
             if (allCompleted && allSteps.length > 0) {
-                console.log('handleNavigation: All guide steps completed');
                 // IMPORTANT: Added visual cleanup before completing guide
                 this.hideVisualElements();
-                console.log('handleNavigation: Cleaned up visuals before completing guide');
                 this.completeGuide();
             } else {
                 // IMPORTANT: Added visual cleanup before showing navigation error
                 this.hideVisualElements();
-                console.log('handleNavigation: Cleaned up visuals before showing navigation error');
                 
                 // Track navigation abandonment if we're actively tracking
                 if (this.executionTracker.isActive() && this.state.recordingId) {
@@ -1442,7 +1334,6 @@ export default class CursorFlow {
                     type: 'warning'
                 });
             }
-            console.timeEnd('Check completion');
           }
         } catch (error) {
           console.error('Error handling navigation:', error);
@@ -1451,11 +1342,9 @@ export default class CursorFlow {
           if (this.state.isPlaying) {
               // IMPORTANT: Added visual cleanup before stopping due to error
               this.hideVisualElements();
-              console.log('handleNavigation: Cleaned up visuals before stopping due to error');
               this.stop({ message: 'Error during navigation', type: 'error' });
           }
         } finally {
-          console.timeEnd('Navigation handling');
           this.isHandlingNavigation = false;
         }
       }, 50); 
@@ -1468,8 +1357,8 @@ export default class CursorFlow {
       if (!element || !interaction) return;
 
       if (this.options.debug) {
-          console.log('[CursorFlow] Setting up interaction tracking for element:', element);
-          console.log('[CursorFlow] Interaction data for tracking:', interaction);
+          this.debugLog('[CursorFlow] Setting up interaction tracking for element:', element);
+          this.debugLog('[CursorFlow] Interaction data for tracking:', interaction);
       }
 
       // Store current interaction type
@@ -1546,11 +1435,11 @@ export default class CursorFlow {
       };
 
       // ADDED: Log the specific element the listener is being added to.
-      console.log(`[CursorFlow] Adding ${eventType} listener to element:`, element);
+      this.debugLog(`[CursorFlow] Adding ${eventType} listener to element:`, element);
       element.addEventListener(eventType, this.currentListener, { capture: true }); // Use capture phase maybe? Test this.
 
       if (this.options.debug) {
-          console.log(`[CursorFlow] Set up ${eventType} listener for element:`, element);
+          this.debugLog(`[CursorFlow] Set up ${eventType} listener for element:`, element);
       }
     }
   
@@ -1584,7 +1473,6 @@ export default class CursorFlow {
           const clickedElement = event.target as HTMLElement;
           if (!this.currentTargetElement.contains(clickedElement)) {
             // User clicked outside the highlighted element
-            console.log('User clicked outside the highlighted element, stopping guide');
             
             // Show notification
             this.stop({
@@ -1720,15 +1608,8 @@ export default class CursorFlow {
     // Add a new method for guide completion
     private completeGuide() {
       if (this.options.debug) {
-        console.log('All guide steps completed, resetting state');
+        this.debugLog('All guide steps completed, resetting state');
       }
-      
-      // Clear any redirect guide ID - no longer needed.
-      // try {
-      //   localStorage.removeItem('hyphen_redirect_guide_id');
-      // } catch (err) {
-      //   console.warn('Failed to clear redirect guide ID on completion:', err);
-      // }
       
       // Track successful completion of the flow
       if (this.executionTracker.isActive()) {
@@ -1760,7 +1641,7 @@ export default class CursorFlow {
       }
       
       if (this.options.debug) {
-        console.log('Visual elements created');
+        this.debugLog('Visual elements created');
       }
     }
 
@@ -2085,5 +1966,88 @@ export default class CursorFlow {
       this.retrieveGuideData(guideId, currentToken);
     }
 
+    // Add this new method after the existing private methods
+    private createNavigationStep(targetUrl: string, stepText: string = "Let's start by navigating to the right page"): any {
+      return {
+        position: -1, // This will be step 0 when sorted
+        interaction: {
+          type: 'navigation',
+          url: targetUrl,
+          pageInfo: {
+            url: targetUrl,
+            path: new URL(targetUrl).pathname
+          }
+        },
+        step_data: {
+          guidance_text: stepText,
+          interaction_type: 'navigation'
+        },
+        id: 'dynamic-nav-step',
+        url: targetUrl
+      };
+    }
+
+    private async injectNavigationStep(guideId: string, token: string, targetUrl: string) {
+      this.debugLog('Injecting navigation step to:', targetUrl);
+      
+      // Create the navigation step
+      const navStep = this.createNavigationStep(targetUrl, "First, let's navigate to the right page to start this guide");
+      
+      // Insert it at the beginning of the steps array
+      if (this.recording && this.recording.steps) {
+        this.recording.steps.unshift(navStep);
+        
+        // Re-sort steps with the new navigation step
+        this.sortedSteps = [...this.recording.steps].sort((a, b) => {
+          return (a.position || 0) - (b.position || 0);
+        });
+      }
+      
+      // Start the guide normally - it will begin with our navigation step
+      await this.startGuide(guideId, token);
+    }
+
+    private async handleNavigationStep(step: any): Promise<boolean> {
+      this.debugLog('Handling navigation step:', step);
+      
+      // Get target URL from step
+      const targetUrl = step.interaction?.url || step.interaction?.pageInfo?.url || step.url;
+      
+      if (!targetUrl) {
+        this.debugLog('Navigation step missing target URL');
+        CursorFlowUI.showNotification({
+          message: 'Navigation step is missing target URL',
+          type: 'error',
+          autoClose: 5000
+        });
+        return false;
+      }
+      
+      // Show guidance card with navigation instruction
+      const guidanceText = step.step_data?.guidance_text || step.annotation || `Navigating to ${targetUrl}...`;
+      this.guidanceCardElement = CursorFlowUI.createGuidanceCard(
+        guidanceText, 
+        false, // Not last step
+        this.options.theme || {}
+      );
+      
+      if (this.guidanceCardElement) {
+        document.body.appendChild(this.guidanceCardElement);
+        // Position at center of screen since there's no target element
+        this.guidanceCardElement.style.position = 'fixed';
+        this.guidanceCardElement.style.top = '50%';
+        this.guidanceCardElement.style.left = '50%';
+        this.guidanceCardElement.style.transform = 'translate(-50%, -50%)';
+        this.guidanceCardElement.style.zIndex = '10000';
+      }
+      
+      // Auto-navigate after showing the card
+      setTimeout(() => {
+        this.debugLog(`Auto-navigating to: ${targetUrl}`);
+        window.location.href = targetUrl;
+      }, 2000); // Give user 2 seconds to read the message
+      
+      return true;
+    }
 
 }

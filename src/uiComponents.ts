@@ -6,8 +6,6 @@ import crazeArrow from '../assets/arrowhead.svg';
 import hyphenboxSvg from '../assets/hyphenbox.svg';
 import { ThemeOptions, NotificationOptions, ErrorNotificationOptions, RedirectNotificationOptions } from './types';
 
-console.log('[SVG-DEBUG] Loaded hyphenbox SVG:', hyphenboxSvg.substring(0, 100) + '...');
-
 interface EnhancedHTMLElement extends HTMLElement {
   [key: string]: any; // Allow any string property
 }
@@ -27,7 +25,6 @@ export class CursorFlowUI {
   private static highlightScrollHandler: EventListener | null = null;
 
   static createStartButton(text: string, color: string, onClick: () => void, theme: ThemeOptions = {}): HTMLElement {
-    console.log('[BUTTON-DEBUG] Creating start button with text:', text);
     const button = document.createElement('button');
     button.className = 'hyphen-start-button';
     
@@ -41,24 +38,21 @@ export class CursorFlowUI {
 
     // Use customer logo if available, otherwise no icon
     if (theme.logo_url) {
-        console.log('[BUTTON-DEBUG] Using customer logo URL for button icon:', theme.logo_url);
         const logoImg = document.createElement('img');
         logoImg.src = theme.logo_url;
-        logoImg.alt = theme.cursor_company_label || 'Logo'; // Use company label or default alt
+        logoImg.alt = theme.cursor_company_label || 'Logo';
         logoImg.style.cssText = `
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
         `;
         logoImg.addEventListener('error', () => {
-             console.warn('[BUTTON-DEBUG] Failed to load customer logo for button icon:', theme.logo_url);
-             iconContainer.innerHTML = ''; // Clear icon on error
+             // Clear icon on error
+             iconContainer.innerHTML = '';
         });
         iconContainer.appendChild(logoImg);
-    } else {
-        console.log('[BUTTON-DEBUG] No customer logo URL provided. Button will have no icon.');
-        // iconContainer remains empty
     }
+    // If no logo_url, iconContainer remains empty (no icon)
     
     // Create button content structure
     button.innerHTML = `
@@ -68,18 +62,8 @@ export class CursorFlowUI {
         </div>
     `;
     
-    // Find the inserted icon container to potentially adjust later if needed
-    const finalIconContainer = button.querySelector('.hyphen-icon');
-    // Note: Adjustments to SVG size are removed as we now use <img> or nothing.
-    if (finalIconContainer && finalIconContainer.hasChildNodes()) {
-        // Potentially add styles to the container if needed
-    } else {
-        console.warn('[BUTTON-DEBUG] Icon container is empty or not found after setting innerHTML');
-    }
-    
-    // Get position from theme or default to bottom-left
-    const position = theme.button_position || 'bottom-left';
-    console.log('[BUTTON-DEBUG] Button position from theme:', position);
+    // Get position from theme - trust database defaults, no fallback
+    const position = theme.button_position;
     
     // Set position-specific styles
     let positionStyles = '';
@@ -418,16 +402,13 @@ export class CursorFlowUI {
             console.warn('[Highlight] Could not parse brand_color. Highlight will have no background/border.', e);
             // Keep border/background as none/transparent if parsing fails
         }
-    } else {
-        console.warn('[Highlight] No brand_color provided. Highlight will have no background/border.');
     }
+    // If no brand_color, highlight has no styling (transparent)
     
     return highlight;
   }
 
   static createTextPopup(text: string, theme: ThemeOptions): HTMLElement {
-    console.log('[CursorFlowUI] createTextPopup called with params:', { text: text.substring(0, 30) + '...', themeKeys: Object.keys(theme || {}) });
-    
     const popup = document.createElement('div');
     popup.className = 'hyphen-text-popup';
     popup.id = 'hyphenbox-text-popup';  // Updated ID
@@ -454,16 +435,10 @@ export class CursorFlowUI {
     // Add the text content to the popup
     popup.appendChild(textContainer);
     
-    console.log('[CursorFlowUI] Basic text-only popup created with ID:', popup.id);
-    // Button creation logic removed
-    
-    console.log('[CursorFlowUI] Final text-only popup structure:', popup.outerHTML.substring(0, 200) + '...');
     return popup;
   }
 
   static createGuidanceCard(text: string, isLastStep: boolean, theme: ThemeOptions): HTMLElement {
-    console.log('[CursorFlowUI] createGuidanceCard called with params:', { text: text.substring(0, 30) + '...', isLastStep, themeKeys: Object.keys(theme || {}) });
-
     const card = document.createElement('div');
     card.className = 'hyphen-guidance-card';
     card.id = 'hyphen-guidance-card'; // Unique ID for the card
@@ -530,13 +505,10 @@ export class CursorFlowUI {
 
     stepButton.addEventListener('mouseenter', () => {
         stepButton.style.setProperty('box-shadow', '0 4px 8px rgba(0,0,0,0.15)', 'important');
-        // Consider adjusting brightness slightly on hover, e.g., using a helper
-        // stepButton.style.setProperty('background-color', this.adjustColor(theme.brand_color || '#007bff', -20), 'important');
 
     });
     stepButton.addEventListener('mouseleave', () => {
         stepButton.style.setProperty('box-shadow', '0 2px 4px rgba(0,0,0,0.1)', 'important');
-        // stepButton.style.setProperty('background-color', theme.brand_color || '#007bff', 'important');
     });
 
     actionContainer.appendChild(stepButton);
@@ -544,24 +516,11 @@ export class CursorFlowUI {
     card.appendChild(textContainer);
     card.appendChild(actionContainer);
 
-    // Entrance animation for the card - will be triggered after positioning
-    // card.animate([
-    //     { opacity: 0, transform: 'translateX(-50%) translateY(20px)' },
-    //     { opacity: 1, transform: 'translateX(-50%) translateY(0)' }
-    // ], {
-    //     duration: 300,
-    //     easing: 'ease-out'
-    // });
-
-    console.log('[CursorFlowUI] Guidance card created (pre-positioning):', card.outerHTML.substring(0, 250) + '...');
     return card;
   }
 
   static positionGuidanceCard(guidanceCard: HTMLElement, highlightElement: HTMLElement | null): void {
     if (!guidanceCard) return;
-
-    // EnhancedHTMLElement for storing custom properties
-    // interface EnhancedGuidanceCard extends HTMLElement { ... } // REMOVED local definition
 
     const card = guidanceCard as EnhancedGuidanceCard;
 
@@ -601,10 +560,7 @@ export class CursorFlowUI {
         }
 
         const GAP = 15;
-        // Ensure card is measurable (briefly visible off-screen if needed, but usually appending is enough)
-        // card.style.visibility = 'hidden'; card.style.position = 'fixed'; card.style.left = '-9999px';
         const cardRect = card.getBoundingClientRect();
-        // card.style.visibility = ''; card.style.position = ''; card.style.left = '';
 
         let bestPosition: { top: number; left: number; positionType: 'absolute' | 'fixed'; transform?: string } | null = null;
         const currentAnchor = card._hyphenAnchorElement;
@@ -664,11 +620,6 @@ export class CursorFlowUI {
         }
         
         // Trigger animation only if it's the first time or position actually changed
-        // For simplicity, we can check if an animation is already running or just animate once on setup.
-        // The current logic in the original function animates every time.
-        // Let's assume animation is desired on first positioning or significant change.
-        // A more robust way would be to check if new position is significantly different.
-        // For now, let's animate based on the positionChanged flag.
         if (positionChanged && !card.getAnimations().some(anim => anim.playState === 'running')) { // Animate if position changed and no animation is running
              const targetTransform = bestPosition ? (bestPosition.transform || 'none') : 'translateX(-50%)';
              const initialYOffset = bestPosition ? '10px' : '20px'; // Different offset for absolute vs fixed
@@ -679,8 +630,6 @@ export class CursorFlowUI {
                 initialTransform = `translateY(${initialYOffset})`;
             } else {
                  // Combine existing transform with translateY
-                 // This is tricky; for simplicity, let's assume separate transforms for now or use a wrapper for animation.
-                 // For now, if there's a horizontal transform, we'll just fade in.
                  if(targetTransform.includes('translateX')) {
                     initialTransform = `${targetTransform} translateY(${initialYOffset})`;
                  } else {
@@ -724,7 +673,6 @@ export class CursorFlowUI {
         if (card._mutationDebounceTimeout) clearTimeout(card._mutationDebounceTimeout);
         card._mutationDebounceTimeout = window.setTimeout(() => {
             if (document.body.contains(card)) { // Only update if card is still in DOM
-                 console.log('[CursorFlowUI] Guidance card: Mutation detected, updating position.');
                  updateCardPositionLogic();
             }
         }, 50); // Debounce mutations slightly
@@ -741,7 +689,6 @@ export class CursorFlowUI {
     // Observe body for major layout shifts, but be cautious with subtree true on body.
     // Only observe direct children of body for additions/removals.
     card._observer.observe(document.body, { childList: true, subtree: false });
-    console.log('[CursorFlowUI] Dynamic tracking setup for guidance card.');
   }
 
   static moveCursorToElement(element: HTMLElement, cursor: HTMLElement | null, interaction: any): void {
@@ -793,18 +740,10 @@ export class CursorFlowUI {
     cursor.style.top = '100%';
     cursor.style.transform = 'translate(-8px, -8px)';
     
-    // Log cursor position for debugging
-    console.log('[CURSOR-DEBUG] Moving cursor to element:', {
-        element: element.outerHTML.substring(0, 100),
-        currentPosition: wrapper.style.transform,
-        timestamp: new Date().getTime()
-    });
-    
     // Function to update the wrapper position with smooth animation
     const updatePosition = () => {
         // Only update position if this is still the current target element
         if (wrapper['currentElement'] !== element) {
-            console.log('[CURSOR-DEBUG] Skipping position update - element is no longer current target');
             return;
         }
 
@@ -817,12 +756,6 @@ export class CursorFlowUI {
         wrapper.style.transform = `translate(${rect.left + scrollX}px, ${rect.top + scrollY}px)`;
         wrapper.style.width = `${rect.width}px`;
         wrapper.style.height = `${rect.height}px`;
-
-        console.log('[CURSOR-DEBUG] Updated position for element:', {
-            element: element.outerHTML.substring(0, 100),
-            newPosition: wrapper.style.transform,
-            timestamp: new Date().getTime()
-        });
     };
     
     // Create a MutationObserver with debouncing to prevent rapid updates
@@ -896,8 +829,6 @@ export class CursorFlowUI {
   
   static positionTextPopupNearCursor(cursor: HTMLElement, popup: HTMLElement): void {
     if (!cursor || !popup) return;
-    
-    console.log('[TEXT-DEBUG] Positioning text popup near cursor');
     
     // Get the cursor wrapper
     const wrapper = document.getElementById('hyphenbox-cursor-wrapper');
@@ -1285,18 +1216,6 @@ export class CursorFlowUI {
           notification.style.top = 'auto';
         }
       }
-
-      console.log(`[NOTIFICATION] Positioned near ${buttonType} button (${buttonPosition}) at:`, {
-        buttonRect,
-        buttonPosition,
-        notificationStyle: {
-          top: notification.style.top,
-          bottom: notification.style.bottom,
-          left: notification.style.left,
-          right: notification.style.right,
-          transform: notification.style.transform
-        }
-      });
     } else {
       // Ultimate fallback position if no buttons found
       const hasButtons = notification.querySelector('button') !== null;
@@ -1308,7 +1227,6 @@ export class CursorFlowUI {
         notification.style.transform = 'translate(-50%, -50%)';
         notification.style.right = 'auto';
         notification.style.bottom = 'auto';
-        console.log('[NOTIFICATION] No buttons found, centering notification with actions');
       } else {
         // For simple notifications, use bottom-right but ensure visibility
         notification.style.bottom = '20px';
@@ -1316,7 +1234,6 @@ export class CursorFlowUI {
         notification.style.left = 'auto';
         notification.style.transform = 'none';
         notification.style.top = 'auto';
-        console.log('[NOTIFICATION] No buttons found, using bottom-right fallback');
       }
     }
   }
@@ -1357,49 +1274,35 @@ export class CursorFlowUI {
 
   static positionHighlightOnElement(element: HTMLElement, highlight: HTMLElement | null): void {
     if (!highlight || !element) return;
-    
-    console.log('[HIGHLIGHT-POSITION] Starting highlight positioning for:', {
-        element: {
-            tag: element.tagName,
-            id: element.id,
-            classes: element.className
-        },
-        timestamp: new Date().toISOString()
-    });
 
     // IMPORTANT: First, always clean up any existing observers and handlers
     // to prevent memory leaks and conflicting updates
     if ((highlight as any)._scrollResizeHandler) {
         window.removeEventListener('scroll', (highlight as any)._scrollResizeHandler);
         window.removeEventListener('resize', (highlight as any)._scrollResizeHandler);
-        window.removeEventListener('orientationchange', (highlight as any)._scrollResizeHandler); // Cleanup orientation change too
+        window.removeEventListener('orientationchange', (highlight as any)._scrollResizeHandler);
         (highlight as any)._scrollResizeHandler = null;
-        console.log('[HIGHLIGHT-POSITION] Cleaned up previous scroll/resize handlers');
     }
     
     if ((highlight as any)._observer) {
         (highlight as any)._observer.disconnect();
         (highlight as any)._observer = null;
-        console.log('[HIGHLIGHT-POSITION] Cleaned up previous mutation observer');
     }
     
     // IMPORTANT: Cancel any pending animation frame from previous positioning
     if ((highlight as any)._frameRequestId) {
         cancelAnimationFrame((highlight as any)._frameRequestId);
         (highlight as any)._frameRequestId = null;
-        console.log('[HIGHLIGHT-POSITION] Cleaned up previous animation frame request');
     }
 
     // IMPORTANT: Always remove highlight from current parent and attach directly to document.body
     // This avoids issues with nested transforms and positioning contexts
     if (highlight.parentElement) {
         highlight.parentElement.removeChild(highlight);
-        console.log('[HIGHLIGHT-POSITION] Removed highlight from previous parent');
     }
     
     // Add the highlight to the document body - ALWAYS directly to body for consistent positioning
     document.body.appendChild(highlight);
-    console.log('[HIGHLIGHT-POSITION] Attached highlight directly to document.body');
     
     // Ensure highlight has correct base styles
     highlight.style.position = 'absolute';
@@ -1416,12 +1319,6 @@ export class CursorFlowUI {
         try {
             // Enhanced Check: Ensure element and highlight are still valid
             if (!element || !highlight || !element.isConnected || !document.body.contains(highlight)) {
-                console.warn('[HIGHLIGHT-POSITION] Update aborted: Element/Highlight missing or disconnected.', {
-                    elementExists: !!element,
-                    elementConnected: element?.isConnected,
-                    highlightExists: !!highlight,
-                    highlightInBody: !!highlight && document.body.contains(highlight)
-                });
                 return; 
             }
             
@@ -1429,16 +1326,6 @@ export class CursorFlowUI {
             const rect = element.getBoundingClientRect();
             const scrollX = window.scrollX || document.documentElement.scrollLeft;
             const scrollY = window.scrollY || document.documentElement.scrollTop;
-            
-            // IMPORTANT: Log raw positions for debugging
-            console.log('[HIGHLIGHT-POSITION-RAW] Element position:', {
-                top: Math.round(rect.top), 
-                left: Math.round(rect.left), 
-                width: Math.round(rect.width), 
-                height: Math.round(rect.height),
-                scroll: { x: Math.round(scrollX), y: Math.round(scrollY) },
-                viewport: { width: window.innerWidth, height: window.innerHeight }
-            });
             
             // *** IMPORTANT: Set transition to none *before* updating position ***
             highlight.style.transition = 'none'; 
@@ -1450,21 +1337,6 @@ export class CursorFlowUI {
             highlight.style.width = `${rect.width + 6}px`;
             highlight.style.height = `${rect.height + 6}px`;
             highlight.style.opacity = '1'; // Ensure visibility
-
-            // NOTE: Removed the re-application of transitions to avoid potential visual glitches during rapid updates
-            // highlight.offsetHeight; // Force reflow
-            // highlight.style.transition = 'top 0.2s, left 0.2s, width 0.2s, height 0.2s'; 
-            
-            console.log('[HIGHLIGHT-POSITION] Updated highlight position:', {
-                element: `${element.tagName}#${element.id || 'noId'}`,
-                highlight: {
-                    top: highlight.style.top,
-                    left: highlight.style.left,
-                    width: highlight.style.width,
-                    height: highlight.style.height
-                },
-                timestamp: new Date().toISOString()
-            });
         } catch (error) {
             console.error('[HIGHLIGHT-POSITION] Error updating highlight position:', error);
         }
@@ -1484,7 +1356,6 @@ export class CursorFlowUI {
         
         // Request the next animation frame to update the position
         frameRequestId = requestAnimationFrame(() => {
-            console.log(`[HIGHLIGHT-POSITION] ${event.type} event triggered update via rAF`);
             updateHighlightPosition();
             frameRequestId = null; // Reset after execution, allowing next frame request
         });
@@ -1514,7 +1385,6 @@ export class CursorFlowUI {
             }
             
             mutationDebounceTimeout = setTimeout(() => {
-                console.log('[HIGHLIGHT-POSITION] Relevant DOM mutation detected, updating position');
                 updateHighlightPosition();
             }, 50); // Keep a small debounce for DOM mutations
         }
@@ -1550,8 +1420,6 @@ export class CursorFlowUI {
     // Also listen for window orientation changes on mobile
     window.addEventListener('orientationchange', scrollResizeHandler);
     
-    console.log('[HIGHLIGHT-POSITION] Setup complete: Added event listeners (using rAF) and observers');
-    
     // Double-check position after a short delay to catch any post-rendering changes
     setTimeout(updateHighlightPosition, 100);
     setTimeout(updateHighlightPosition, 500); // And again after longer delay
@@ -1568,8 +1436,6 @@ export class CursorFlowUI {
     const hasActiveModals = activeModals.length > 0;
 
     if (hasActiveModals) {
-      console.log('[CLEANUP-DEBUG] Active modal detected, performing limited cleanup to avoid interference');
-      
       // Only clean up flow-specific elements when modals are active
       // This prevents interfering with modal event listeners and DOM structure
       
@@ -1673,12 +1539,10 @@ export class CursorFlowUI {
         }
       }
       
-      console.log('[CLEANUP-DEBUG] Limited cleanup completed while modal is active');
       return;
     }
 
     // Full cleanup when no modals are active (original behavior)
-    console.log('[CLEANUP-DEBUG] No active modals, performing full cleanup');
 
     // Clean up the guidance container and its contents
     const container = document.querySelector('.hyphen-guidance-container') as EnhancedHTMLElement;
@@ -1711,7 +1575,7 @@ export class CursorFlowUI {
             if ((highlight as any)._scrollResizeHandler) {
                 window.removeEventListener('scroll', (highlight as any)._scrollResizeHandler);
                 window.removeEventListener('resize', (highlight as any)._scrollResizeHandler);
-                window.removeEventListener('orientationchange', (highlight as any)._scrollResizeHandler); // Cleanup orientation change
+                window.removeEventListener('orientationchange', (highlight as any)._scrollResizeHandler);
                 (highlight as any)._scrollResizeHandler = null;
             }
             
@@ -1749,7 +1613,7 @@ export class CursorFlowUI {
     }
 
     // Clean up the new guidance card by ID
-    const guidanceCard = document.getElementById('hyphen-guidance-card') as EnhancedGuidanceCard; // Use enhanced type
+    const guidanceCard = document.getElementById('hyphen-guidance-card') as EnhancedGuidanceCard;
     if (guidanceCard) {
       // Disconnect observer and remove listeners added by positionGuidanceCard
       if (guidanceCard._observer) {
@@ -1836,8 +1700,6 @@ export class CursorFlowUI {
             }
         });
     }
-
-    console.log('[CLEANUP-DEBUG] Full UI cleanup completed', keepCursor ? '(keeping cursor)' : '(including cursor)', keepNotifications ? '(keeping notifications)' : '(including notifications)');
   }
 
   // Add this as a new method in the CursorFlowUI class
@@ -1851,28 +1713,6 @@ export class CursorFlowUI {
     const modals = Array.from(document.querySelectorAll(
       '.mantine-Modal-content, [role="dialog"], .modal-content, .modal, .dialog'
     )) as HTMLElement[];
-    
-    // Log detailed info about portals and modals
-    console.log('[PORTAL-DETECTOR] Found portals:', {
-      count: portals.length,
-      portals: portals.map(p => ({
-        classes: p.className,
-        children: p.children.length,
-        visible: p.offsetParent !== null,
-        rect: p.getBoundingClientRect()
-      }))
-    });
-    
-    console.log('[PORTAL-DETECTOR] Found modals:', {
-      count: modals.length,
-      modals: modals.map(m => ({
-        classes: m.className,
-        role: m.getAttribute('role'),
-        children: m.children.length,
-        visible: m.offsetParent !== null,
-        rect: m.getBoundingClientRect()
-      }))
-    });
     
     // Determine which modal is most likely to be active/visible
     let activeModal = null;
@@ -1897,11 +1737,6 @@ export class CursorFlowUI {
       });
       
       activeModal = visibleModals[0];
-      console.log('[PORTAL-DETECTOR] Active modal identified:', {
-        classes: activeModal.className,
-        role: activeModal.getAttribute('role'),
-        zIndex: window.getComputedStyle(activeModal).zIndex
-      });
     }
     
     return { portals, modals, activeModal };
@@ -1909,8 +1744,6 @@ export class CursorFlowUI {
 
   // Add a new method to show thinking indicator
   static showThinkingIndicator(button: HTMLElement, theme: ThemeOptions): HTMLElement {
-    console.log('[THINKING-DEBUG] Showing thinking indicator');
-    
     // Remove any existing thinking indicators
     const existingIndicators = document.querySelectorAll('.hyphen-thinking-indicator');
     existingIndicators.forEach(indicator => {
