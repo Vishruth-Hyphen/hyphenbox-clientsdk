@@ -86,7 +86,7 @@ export class CopilotModal {
         overlay.id = 'hyphen-search-overlay';
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: rgba(0, 0, 0, 0.7); z-index: 10000;
+            background-color: rgba(0, 0, 0, 0.5); z-index: 10000;
             display: flex; justify-content: center; align-items: center;
             opacity: 0; transition: opacity 0.3s ease;
         `;
@@ -94,9 +94,9 @@ export class CopilotModal {
         const modal = document.createElement('div');
         modal.id = 'hyphen-search-modal';
         modal.style.cssText = `
-            background-color: #ffffff; padding: 0; border-radius: 16px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15); width: 90%; max-width: 500px;
-            max-height: 80vh; transform: translateY(20px); transition: transform 0.3s ease;
+            background-color: #ffffff; padding: 0; border-radius: 12px;
+            box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1); width: 450px;
+            max-height: 70vh; transform: translateY(20px); transition: transform 0.3s ease;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex; flex-direction: column; overflow: hidden;
         `;
@@ -104,13 +104,12 @@ export class CopilotModal {
         // Create persistent containers
         this.modalHeaderContainer = document.createElement('div');
         this.modalHeaderContainer.id = 'hyphen-modal-header-content';
-        this.modalHeaderContainer.style.padding = '24px 24px 0px 24px'; // Padding for header elements
+        this.modalHeaderContainer.style.padding = '16px 24px 0px 24px';
 
         this.modalMainContentContainer = document.createElement('div');
-        this.modalMainContentContainer.id = 'hyphen-modal-main-content'; // This is where app content goes
+        this.modalMainContentContainer.id = 'hyphen-modal-main-content';
         this.modalMainContentContainer.style.cssText = `
-            padding: 16px 24px; /* Standard padding for main content area */
-            flex-grow: 1; 
+            padding: 8px 24px 0 24px;
             overflow-y: auto; 
         `;
 
@@ -155,7 +154,7 @@ export class CopilotModal {
             Object.assign(titleEl.style, {
                 color: this.theme?.text_color || '#333',
                 margin: '0', 
-                fontSize: showBackButton ? '20px' : '24px', 
+                fontSize: showBackButton ? '16px' : '18px', 
                 fontWeight: '600',
                 textAlign: showBackButton ? 'left' : 'center' as 'center',
                 flexGrow: '1'
@@ -203,156 +202,202 @@ export class CopilotModal {
         this.renderPersistentHeader('How can I help you today?', false); // No back button for main search view
         this.modalMainContentContainer.innerHTML = ''; // Clear previous main content
 
-        // Search container styling (from previous renderSearchView)
-        const searchSection = document.createElement('div'); // Use a section for content within main
-        Object.assign(searchSection.style, {
-             // Optional: add specific padding for search section if needed, otherwise relies on modalMainContentContainer padding
-        });
+        // Main container
+        const mainContainer = document.createElement('div');
+        mainContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        `;
 
+        // Search container
         const searchContainer = document.createElement('div');
-        Object.assign(searchContainer.style, { /* ... search bar container styles ... */ 
-            display: 'flex', alignItems: 'center', marginBottom: '25px',
-            border: this.theme?.search_border_color ? `1px solid ${this.theme.search_border_color}` : '1px solid #ddd',
-            borderRadius: '8px', padding: '5px'
-        });
+        searchContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 3px;
+            margin-bottom: 8px;
+        `;
 
         const input = document.createElement('input');
-        // ... input styles and event listeners ...
         input.type = 'text';
         input.placeholder = 'Ask a question or describe your task...';
         input.id = 'hyphen-search-input'; 
-        Object.assign(input.style, { 
-            flexGrow: '1', padding: '12px 15px', border: 'none', 
-            outline: 'none', fontSize: '16px', backgroundColor: 'transparent' 
-        });
+        input.style.cssText = `
+            flex-grow: 1;
+            padding: 8px 12px;
+            border: none;
+            outline: none;
+            font-size: 14px;
+            background-color: transparent;
+        `;
 
         const searchButton = document.createElement('button');
-        // ... search button styles, SVG, and event listener ...
         searchButton.id = 'hyphen-search-submit';
-        searchButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+        searchButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
         searchButton.setAttribute('aria-label', 'Search');
-        Object.assign(searchButton.style, { 
-            padding: '10px', border: 'none', backgroundColor: 'transparent', 
-            color: this.theme?.search_icon_color || '#555', cursor: 'pointer', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center' 
-        });
+        searchButton.style.cssText = `
+            padding: 8px;
+            border: none;
+            background-color: transparent;
+            color: #555;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
         searchButton.onclick = () => this.handleSearch(input.value);
         input.onkeydown = (e) => { if (e.key === 'Enter') searchButton.click(); };
 
         searchContainer.appendChild(input);
         searchContainer.appendChild(searchButton);
-        searchSection.appendChild(searchContainer);
+        mainContainer.appendChild(searchContainer);
 
+        // Popular Guides Section
+        const popularSection = document.createElement('div');
+        
+        const popularTitle = document.createElement('div');
+        popularTitle.textContent = 'POPULAR GUIDES';
+        popularTitle.style.cssText = `
+            font-size: 10px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        `;
+        popularSection.appendChild(popularTitle);
+
+        // Popular guides list (we'll populate this with actual guides later)
+        const guidesContainer = document.createElement('div');
+        guidesContainer.id = 'popular-guides-container';
+        guidesContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 8px; /* Keep bottom spacing consistent with other sections */
+        `;
+
+        // Add loading state for guides
+        this.loadPopularGuides(guidesContainer);
+        
+        popularSection.appendChild(guidesContainer);
+        mainContainer.appendChild(popularSection);
+
+        // Modules Section
+        const modulesSection = document.createElement('div');
+        modulesSection.style.marginBottom = '8px'; // Ensure same spacing as Popular Guides section
+        
+        const modulesTitle = document.createElement('div');
+        modulesTitle.textContent = 'MODULES';
+        modulesTitle.style.cssText = `
+            font-size: 10px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        `;
+        modulesSection.appendChild(modulesTitle);
+
+        const modulesContainer = document.createElement('div');
+        modulesContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        `;
+
+        // Onboarding module
+        const onboardingModule = this.createModuleItem(
+            '🎯', // Icon
+            'Onboarding',
+            null, // Removed badge
+            () => {
+                if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
+                    console.warn('[CopilotModal] Modal containers not available for Onboarding');
+                    return;
+                }
+                this.currentView = 'onboarding';
+                this.renderPersistentHeader('', true);
+                OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
+                    this.renderSearchView(); 
+                });
+            }
+        );
+        modulesContainer.appendChild(onboardingModule);
+
+        // View All Guides module
+        const guidesModule = this.createModuleItem(
+            '📚', // Icon
+            'View All Guides',
+            null,
+            () => {
+                if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
+                    console.warn('[CopilotModal] Modal containers not available for View All Guides');
+                    return;
+                }
+                this.currentView = 'list';
+                this.renderPersistentHeader('All Guides', true);
+                ViewAllGuidesModal.renderInContainer(
+                    this.modalMainContentContainer, 
+                    this.apiClient, 
+                    (guideId: string) => { 
+                        this.closeSearchModal(); 
+                        this.onGuideFound(guideId); 
+                    }, 
+                    () => { this.renderSearchView(); }
+                );
+            }
+        );
+        modulesContainer.appendChild(guidesModule);
+
+        // Announcements module (coming soon)
+        const announcementsModule = this.createModuleItem(
+            '📢', // Icon
+            'Announcements',
+            null,
+            null, // No click handler
+            'Coming soon'
+        );
+        // Remove extra bottom padding to minimize space before footer
+        (announcementsModule as HTMLElement).style.paddingBottom = '0px';
+        modulesContainer.appendChild(announcementsModule);
+
+        modulesSection.appendChild(modulesContainer);
+        mainContainer.appendChild(modulesSection);
+
+        // Results area for search feedback
         const resultsArea = document.createElement('div');
         resultsArea.id = 'hyphen-search-results';
-        // ... resultsArea styling ...
-        Object.assign(resultsArea.style, { 
-            minHeight: '40px', textAlign: 'center' as 'center', fontSize: '14px', color: '#666',
-            marginTop: '8px', marginBottom: '0px', /* No bottom margin, footer handles spacing */
-            display: 'flex', flexDirection: 'column' as 'column', 
-            alignItems: 'center' as 'center', justifyContent: 'center' as 'center', gap: '10px'
-        });
-        searchSection.appendChild(resultsArea);
-        this.modalMainContentContainer.appendChild(searchSection);
+        resultsArea.style.cssText = `
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-top: 8px;
+            display: none; /* Hide by default to remove space */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        `;
+        mainContainer.appendChild(resultsArea);
 
+        this.modalMainContentContainer.appendChild(mainContainer);
         requestAnimationFrame(() => input.focus());
-        // Footer is persistent and rendered by renderPersistentFooter
     }
 
-    // createFooter now always creates the main footer with nav links
+    // createFooter now only creates the "powered by" footer
     private static createFooter(): HTMLElement {
         const footerArea = document.createElement('div');
         footerArea.style.cssText = `
-            display: flex; justify-content: space-between; align-items: center;
-            border-top: 1px solid #f0f0f0; padding: 16px 24px; /* Add padding here */
-            margin-top: 0; /* Footer is positioned by its container */
+            display: flex; justify-content: center; align-items: center;
+            border-top: 1px solid #f0f0f0; padding: 12px 24px;
+            margin-top: 0; /* keep flush with previous section */
         `;
 
-        const leftSide = document.createElement('div');
-        leftSide.style.cssText = `display: flex; gap: 12px; align-items: center;`;
-
-        const allGuidesButton = document.createElement('button');
-        allGuidesButton.textContent = 'View All Guides';
-        Object.assign(allGuidesButton.style, { /* styles */ 
-            background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
-            fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
-        });
-        allGuidesButton.onclick = () => {
-            // Access modal containers dynamically instead of capturing in closure
-            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
-                console.warn('[CopilotModal] Modal containers not available for View All Guides - reinitializing modal');
-                // Containers are missing, probably cleared by cleanup. Reinitialize modal.
-                setTimeout(() => {
-                    this.showSearchModal(); // Reopen modal
-                    setTimeout(() => {
-                        // Retry the action after modal is reinitialized
-                        if (this.modalMainContentContainer && this.modalHeaderContainer && this.apiClient) {
-                            this.currentView = 'list';
-                            this.renderPersistentHeader('All Guides', true);
-                            ViewAllGuidesModal.renderInContainer(
-                                this.modalMainContentContainer, 
-                                this.apiClient, 
-                                (guideId: string) => { 
-                                    this.closeSearchModal(); 
-                                    this.onGuideFound(guideId); 
-                                }, 
-                                () => { this.renderSearchView(); }
-                            );
-                        }
-                    }, 100); // Small delay for modal to fully initialize
-                }, 50);
-                return;
-            }
-            this.currentView = 'list';
-            this.renderPersistentHeader('All Guides', true);
-            ViewAllGuidesModal.renderInContainer(
-                this.modalMainContentContainer, 
-                this.apiClient, 
-                (guideId: string) => { 
-                    this.closeSearchModal(); 
-                    this.onGuideFound(guideId); 
-                }, 
-                () => { this.renderSearchView(); }
-            );
-        };
-        leftSide.appendChild(allGuidesButton);
-            
-        const onboardingButton = document.createElement('button');
-        onboardingButton.textContent = 'Onboarding';
-        Object.assign(onboardingButton.style, { /* styles */ 
-            background: 'none', border: 'none', color: this.theme?.link_color || '#007bff',
-            fontSize: '14px', cursor: 'pointer', padding: '5px', textDecoration: 'underline'
-        });
-        onboardingButton.onclick = () => {
-            // Access modal containers dynamically instead of capturing in closure
-            if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
-                console.warn('[CopilotModal] Modal containers not available for Onboarding - reinitializing modal');
-                // Containers are missing, probably cleared by cleanup. Reinitialize modal.
-                setTimeout(() => {
-                    this.showSearchModal(); // Reopen modal
-                    setTimeout(() => {
-                        // Retry the action after modal is reinitialized
-                        if (this.modalMainContentContainer && this.modalHeaderContainer && this.apiClient) {
-                            this.currentView = 'onboarding';
-                            this.renderPersistentHeader('', true);
-                            OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
-                                this.renderSearchView(); 
-                            });
-                        }
-                    }, 100); // Small delay for modal to fully initialize
-                }, 50);
-                return;
-            }
-            this.currentView = 'onboarding';
-            this.renderPersistentHeader('', true);
-            OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
-                this.renderSearchView(); 
-            });
-        };
-        leftSide.appendChild(onboardingButton);
-
         const poweredByFooter = this.createPoweredByFooter();
-        footerArea.appendChild(leftSide);
         footerArea.appendChild(poweredByFooter);
         return footerArea;
     }
@@ -437,6 +482,7 @@ export class CopilotModal {
 
         const resultsArea = document.getElementById('hyphen-search-results');
         if (resultsArea) {
+            resultsArea.style.display = 'flex'; // Ensure it's visible when we have a message
             resultsArea.innerHTML = ''; // Clear previous content (including potential loading indicator)
 
             // Message Span
@@ -479,6 +525,12 @@ export class CopilotModal {
                 resultsArea.style.transition = 'opacity 0.3s';
                 resultsArea.style.opacity = '1';
             });
+        } else {
+            // If resultsArea is not found, try to create one dynamically (edge case)
+        }
+        // After clearing message (i.e., type is ''), hide area to remove space
+        if (type === '' && resultsArea) {
+            resultsArea.style.display = 'none';
         }
     }
 
@@ -493,8 +545,9 @@ export class CopilotModal {
 
         const resultsArea = document.getElementById('hyphen-search-results');
         if (resultsArea) {
-             // Clear previous content and add loading indicator
-             resultsArea.innerHTML = `
+            resultsArea.style.display = 'flex'; // Show area when loading
+            // Clear previous content and add loading indicator
+            resultsArea.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: center; gap: 5px; color: #888;">
                     <span>Figuring out the guide</span>
                     <span class="copilot-loading-dots"><span>.</span><span>.</span><span>.</span></span>
@@ -514,6 +567,7 @@ export class CopilotModal {
         // Remove the specific loading indicator if it exists
         if (this.searchLoadingIndicator && this.searchLoadingIndicator.parentElement) {
             this.searchLoadingIndicator.parentElement.innerHTML = ''; // Clear results area content
+            (this.searchLoadingIndicator.parentElement as HTMLElement).style.display = 'none';
         }
         this.searchLoadingIndicator = null;
     }
@@ -628,5 +682,203 @@ export class CopilotModal {
         } else {
              console.warn('[Hyphen CopilotModal] Fallback SVG element not found in container.');
         }
+    }
+
+    /**
+     * Load and display popular guides
+     */
+    private static async loadPopularGuides(container: HTMLElement): Promise<void> {
+        if (!this.apiClient) {
+            container.innerHTML = '<div style="color: #888; font-style: italic; font-size: 13px;">Unable to load guides</div>';
+            return;
+        }
+
+        // Add loading state
+        container.innerHTML = `
+            <div style="color: #888; font-size: 13px; display: flex; align-items: center; gap: 5px;">
+                <span class="copilot-loading-dots"><span>.</span><span>.</span><span>.</span></span>
+                <span>Loading guides...</span>
+            </div>
+        `;
+
+        try {
+            // Fetch guides from API (we'll use getRecordings method)
+            const guides = await this.apiClient.getRecordings();
+            
+            container.innerHTML = ''; // Clear loading
+
+            if (!guides || guides.length === 0) {
+                container.innerHTML = '<div style="color: #888; font-style: italic; font-size: 13px;">No guides available</div>';
+                return;
+            }
+
+            // Show first 3 guides
+            const topGuides = guides.slice(0, 3);
+            
+            topGuides.forEach((guide: any) => {
+                const guideItem = this.createGuideItem(guide.name, guide.id);
+                container.appendChild(guideItem);
+            });
+
+        } catch (error) {
+            console.error('[CopilotModal] Failed to load popular guides:', error);
+            container.innerHTML = '<div style="color: #dc3545; font-size: 13px;">Failed to load guides</div>';
+        }
+    }
+
+    /**
+     * Create a guide item element for popular guides
+     */
+    private static createGuideItem(name: string, id: string): HTMLElement {
+        const item = document.createElement('div');
+        item.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.1s ease;
+            font-size: 13px;
+            color: #333;
+        `;
+
+        // Arrow icon
+        const arrow = document.createElement('div');
+        arrow.innerHTML = '→';
+        arrow.style.cssText = `
+            color: #999;
+            font-size: 12px;
+            font-weight: normal;
+        `;
+
+        // Guide name
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = name;
+        nameSpan.style.cssText = `
+            flex-grow: 1;
+            font-weight: 400;
+        `;
+
+        item.appendChild(arrow);
+        item.appendChild(nameSpan);
+
+        // Very subtle hover effects
+        item.addEventListener('mouseover', () => {
+            item.style.backgroundColor = '#f9f9f9';
+        });
+
+        item.addEventListener('mouseout', () => {
+            item.style.backgroundColor = 'transparent';
+        });
+
+        // Click handler
+        item.addEventListener('click', () => {
+            this.closeSearchModal();
+            this.onGuideFound(id);
+        });
+
+        return item;
+    }
+
+    /**
+     * Create a module item element
+     */
+    private static createModuleItem(
+        icon: string, 
+        title: string, 
+        badge: string | null = null, 
+        onClick: (() => void) | null = null,
+        subtitle: string | null = null
+    ): HTMLElement {
+        const item = document.createElement('div');
+        item.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            ${onClick ? 'cursor: pointer;' : 'cursor: default;'}
+            transition: background-color 0.1s ease;
+            font-size: 13px;
+            color: #333;
+            ${!onClick ? 'opacity: 0.6;' : ''}
+        `;
+
+        // Icon
+        const iconSpan = document.createElement('span');
+        iconSpan.textContent = icon;
+        iconSpan.style.cssText = `
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+        `;
+
+        // Content (title and subtitle)
+        const content = document.createElement('div');
+        content.style.cssText = `
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        `;
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = title;
+        titleSpan.style.cssText = `
+            font-weight: 400;
+            color: #333;
+            font-size: 13px;
+        `;
+        content.appendChild(titleSpan);
+
+        if (subtitle) {
+            const subtitleSpan = document.createElement('span');
+            subtitleSpan.textContent = subtitle;
+            subtitleSpan.style.cssText = `
+                font-size: 11px;
+                color: #999;
+                font-style: italic;
+            `;
+            content.appendChild(subtitleSpan);
+        }
+
+        // Badge (if provided)
+        let badgeElement: HTMLElement | null = null;
+        if (badge) {
+            badgeElement = document.createElement('span');
+            badgeElement.textContent = badge;
+            badgeElement.style.cssText = `
+                background-color: #007bff;
+                color: white;
+                border-radius: 10px;
+                padding: 1px 6px;
+                font-size: 11px;
+                font-weight: 500;
+                min-width: 16px;
+                text-align: center;
+            `;
+        }
+
+        item.appendChild(iconSpan);
+        item.appendChild(content);
+        if (badgeElement) {
+            item.appendChild(badgeElement);
+        }
+
+        // Very subtle hover effects and click handler
+        if (onClick) {
+            item.addEventListener('mouseover', () => {
+                item.style.backgroundColor = '#f9f9f9';
+            });
+
+            item.addEventListener('mouseout', () => {
+                item.style.backgroundColor = 'transparent';
+            });
+
+            item.addEventListener('click', onClick);
+        }
+
+        return item;
     }
 } 
