@@ -1743,7 +1743,7 @@ export class CursorFlowUI {
   }
 
   // Add a new method to show thinking indicator
-  static showThinkingIndicator(button: HTMLElement, theme: ThemeOptions): HTMLElement {
+  static showThinkingIndicator(button: HTMLElement | null, theme: ThemeOptions): HTMLElement {
     // Remove any existing thinking indicators
     const existingIndicators = document.querySelectorAll('.hyphen-thinking-indicator');
     existingIndicators.forEach(indicator => {
@@ -1798,10 +1798,18 @@ export class CursorFlowUI {
     // Add thinking cursor to the positioner container
     container.appendChild(thinkingCursor);
     
-    // Position the container relative to the button
-    const buttonRect = button.getBoundingClientRect();
-    container.style.left = `${buttonRect.left - 10}px`;
-    container.style.top = `${buttonRect.top - (thinkingCursor.offsetHeight || 50) - 10}px`;
+    // Position the container relative to the button or centered if no button
+    if (button && document.body.contains(button)) {
+      const buttonRect = button.getBoundingClientRect();
+      const cursorHeight = thinkingCursor.offsetHeight || 50; // Estimate if not rendered
+      container.style.left = `${buttonRect.left + (buttonRect.width / 2) - (thinkingCursor.offsetWidth / 2)}px`; // Center horizontally to button
+      container.style.top = `${buttonRect.top - cursorHeight - 10}px`; // Position above button
+    } else {
+      // Fallback to screen center (e.g., top 40%, horizontally centered)
+      container.style.left = '50%';
+      container.style.top = '40%';
+      container.style.transform = 'translate(-50%, -50%)';
+    }
     
     // Add to document
     document.body.appendChild(container);

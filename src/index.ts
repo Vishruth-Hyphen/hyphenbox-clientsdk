@@ -6,8 +6,8 @@ import { FlowExecutionTracker } from './flowExecutionTracker';
 import { CursorFlowOptions } from './types';
 
 // Define the API URL constant - same as in cursorFlow.ts
-const API_URL = 'https://hyphenbox-backend.onrender.com';
-// const API_URL = 'http://localhost:8000';
+// const API_URL = 'https://hyphenbox-backend.onrender.com';
+const API_URL = 'http://localhost:8000';
 
 // Export CursorFlow as the default export (for browser compatibility)
 export default CursorFlow;
@@ -94,6 +94,14 @@ export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
     viewAllGuides: {
       show: () => {
         CopilotModal.showSearchModal();
+        // After modal is shown, programmatically click the View All Guides button
+        setTimeout(() => {
+          const viewAllGuidesButton = Array.from(document.querySelectorAll('button'))
+            .find(btn => btn.textContent === 'View All Guides');
+          if (viewAllGuidesButton) {
+            viewAllGuidesButton.click();
+          }
+        }, 100);
       },
     },
     // apiClient: apiClientInstance, // Expose if needed

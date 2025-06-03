@@ -71,6 +71,36 @@ export interface CursorFlowOptions {
     autoClose?: number;
   }
 
+export interface XPathStrategy {
+  type: 'absolute' | 'relative' | 'text-based' | 'position-based';
+  xpath: string;
+  confidence: number;
+}
+
+export interface ParentChildContext {
+  parents: Array<{
+    tagName: string;
+    id: string | null;
+    classes: string[];
+    attributes: { [key: string]: string };
+    textContent: string | null;
+  }>;
+  children: Array<{
+    tagName: string;
+    id: string | null;
+    classes: string[];
+    attributes: { [key: string]: string };
+    textContent: string | null;
+  }>;
+  siblings: Array<{
+    position: 'previous' | 'next';
+    tagName: string;
+    id: string | null;
+    classes: string[];
+    textContent: string | null;
+  }>;
+}
+
 export interface ElementData {
   tagName?: string;
   id?: string | null;
@@ -78,6 +108,19 @@ export interface ElementData {
   cssSelector?: string;
   path?: string[]; 
   attributes?: string | { [key: string]: string };
+  semanticClasses?: string;
+  childSvgClass?: string | null;
+  // NEW: Enhanced identification strategies
+  xpathStrategies?: XPathStrategy[];
+  parentChildContext?: ParentChildContext;
+  stableAttributes?: { [key: string]: string };
+  // Element positioning and dimensions
+  elementRect?: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface PageInfo {
