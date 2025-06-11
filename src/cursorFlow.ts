@@ -8,8 +8,8 @@ import { ElementFinderStrategy, PageContextHint } from './elementFinderStrategy'
 import { FlowExecutionTracker } from './flowExecutionTracker';
 import { CopilotModal } from './copilotModal';
 
-// const API_URL = 'https://hyphenbox-backend.onrender.com';
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://hyphenbox-backend.onrender.com';
+// const API_URL = 'http://localhost:8000';
 
 export default class CursorFlow {
     private options: CursorFlowOptions;

@@ -6,8 +6,8 @@ import { FlowExecutionTracker } from './flowExecutionTracker';
 import { CursorFlowOptions } from './types';
 
 // Define the API URL constant - same as in cursorFlow.ts
-// const API_URL = 'https://hyphenbox-backend.onrender.com';
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://hyphenbox-backend.onrender.com';
+// const API_URL = 'http://localhost:8000';
 
 // Export CursorFlow as the default export (for browser compatibility)
 export default CursorFlow;
