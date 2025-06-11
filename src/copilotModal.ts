@@ -426,16 +426,6 @@ export class CopilotModal {
                 this.modalHeaderContainer = null;      // Clear ref
                 this.modalMainContentContainer = null; // Clear ref
                 this.modalFooterContainer = null;      // Clear ref
-                
-                // Trigger full cleanup after modal is closed to clean up any
-                // UI elements that were skipped during flow completion
-                try {
-                    if ((window as any).CursorFlowUI) {
-                        (window as any).CursorFlowUI.cleanupAllUI(false, true);
-                    }
-                } catch (error) {
-                    console.warn('[CopilotModal] Error during post-modal cleanup:', error);
-                }
             }, 300);
         } else if (overlay && document.body.contains(overlay)) {
             document.body.removeChild(overlay);
@@ -566,8 +556,9 @@ export class CopilotModal {
 
         // Remove the specific loading indicator if it exists
         if (this.searchLoadingIndicator && this.searchLoadingIndicator.parentElement) {
-            this.searchLoadingIndicator.parentElement.innerHTML = ''; // Clear results area content
-            (this.searchLoadingIndicator.parentElement as HTMLElement).style.display = 'none';
+            const parent = this.searchLoadingIndicator.parentElement;
+            parent.innerHTML = ''; // Clear results area content
+            (parent as HTMLElement).style.display = 'none';
         }
         this.searchLoadingIndicator = null;
     }
