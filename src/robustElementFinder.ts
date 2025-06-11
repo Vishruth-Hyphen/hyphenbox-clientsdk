@@ -40,9 +40,46 @@ export class RobustElementFinder {
             // Define Strategies in Priority Order
             const strategies: { name: string; execute: () => Promise<HTMLElement[]> }[] = [];
 
-            // 1. Escaped ID
+            // Special case: Readonly form elements - prioritize functional attributes
+            if (elementData.tagName === 'INPUT' && attributes && attributes['readonly'] !== undefined) {
+                if (this.debugMode) {
+                    console.log(`[RobustElementFinder] Detected readonly input - using functional attribute strategies first`);
+                }
+                
+                // Try readonly + other functional attributes first
+                const functionalSelectors = [];
+                if (attributes['aria-haspopup']) {
+                    functionalSelectors.push(`input[readonly][aria-haspopup="${CSS.escape(attributes['aria-haspopup'])}"]`);
+                }
+                if (attributes['autocomplete']) {
+                    functionalSelectors.push(`input[readonly][autocomplete="${CSS.escape(attributes['autocomplete'])}"]`);
+                }
+                
+                functionalSelectors.forEach((selector, index) => {
+                    strategies.push({ 
+                        name: `Readonly Input Functional-${index + 1}`, 
+                        execute: () => this.executeStrategy(runId, `Readonly Input Functional-${index + 1}`, allSearchRoots, selector, targetText, interaction) 
+                    });
+                });
+                
+                // Try readonly + value for inputs with stable values (like selects)
+                if (attributes['value'] && elementData.tagName === 'INPUT' && attributes['readonly'] !== undefined) {
+                    strategies.push({ 
+                        name: 'Readonly Input Value', 
+                        execute: () => this.executeStrategy(runId, 'Readonly Input Value', allSearchRoots, `input[readonly][value="${CSS.escape(attributes['value'])}"]`, targetText, interaction) 
+                    });
+                }
+            }
+
+            // 1. Escaped ID (only if not dynamic)
             if (elementData.id && !elementData.id.startsWith('headlessui-')) { 
-                strategies.push({ name: 'Escaped ID', execute: () => this.executeStrategy(runId, 'Escaped ID', allSearchRoots, `#${CSS.escape(elementData.id!)}`, targetText, interaction, true) });
+                // Skip dynamic IDs that are likely to change between sessions
+                const isDynamicId = /^(mantine-|headlessui-|react-|mui-|chakra-)[a-z0-9]+$/i.test(elementData.id);
+                if (!isDynamicId) {
+                    strategies.push({ name: 'Escaped ID', execute: () => this.executeStrategy(runId, 'Escaped ID', allSearchRoots, `#${CSS.escape(elementData.id!)}`, targetText, interaction, true) });
+                } else if (this.debugMode) {
+                    console.warn(`[RobustElementFinder] Skipping dynamic ID: ${elementData.id}`);
+                }
             }
             // 2. Escaped CSS Selector
             if (elementData.cssSelector && elementData.cssSelector !== elementData.id && !elementData.cssSelector.includes(':contains(')) {
@@ -292,10 +329,22 @@ export class RobustElementFinder {
         const selectors: { type: string; selector: string }[] = [];
         const tagPrefix = tagName ? tagName.toLowerCase() : '';
         const stableAttrs: { [key: string]: string } = { 
-            'name': 'Stable', 'data-testid': 'Stable', 'data-test': 'Stable', 'href': 'Stable', 'src': 'Stable' 
+            'name': 'Stable', 
+            'data-testid': 'Stable', 
+            'data-test': 'Stable', 
+            'href': 'Stable', 
+            'src': 'Stable',
+            // Only truly stable attributes that don't change during interaction
+            'aria-haspopup': 'Stable',  // Describes element behavior (popup type)
+            'autocomplete': 'Stable',   // Semantic HTML attribute for input purpose
+            'readonly': 'Stable'        // Form control state that rarely changes
         };
         const otherAttrs: { [key: string]: string } = {
-             'placeholder': 'Other', 'title': 'Other', 'aria-label': 'Other'
+             'placeholder': 'Other', 
+             'title': 'Other', 
+             'aria-label': 'Other',
+             // Move questionable attributes to "Other" category
+             'data-variant': 'Other'  // UI styling - could change with design updates
          }; 
         for (const attr in stableAttrs) {
             if (attributes[attr]) { selectors.push({ type: stableAttrs[attr], selector: `${tagPrefix}[${attr}="${CSS.escape(attributes[attr])}"]` }); }
