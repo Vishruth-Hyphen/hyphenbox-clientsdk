@@ -17,12 +17,29 @@ export class FlowExecutionTracker {
   private pendingOperations: Array<() => Promise<boolean>> = [];
   private pendingTimeout: any = null;
   private sessionDetails: any = null;
+  private static debugMode: boolean = false;
 
   constructor(apiClient: ApiClient) {
     if (!apiClient) {
       throw new Error('ApiClient is required for FlowExecutionTracker');
     }
     this.apiClient = apiClient;
+  }
+
+  /**
+   * Set debug mode for FlowExecutionTracker
+   */
+  static setDebugMode(enabled: boolean): void {
+    FlowExecutionTracker.debugMode = enabled;
+  }
+
+  /**
+   * Debug logging helper
+   */
+  private debugLog(...args: any[]): void {
+    if (FlowExecutionTracker.debugMode) {
+      console.log('[FlowExecutionTracker]', ...args);
+    }
   }
 
   /**
@@ -47,7 +64,7 @@ export class FlowExecutionTracker {
       }
       
       this.executionId = executionId;
-      console.log(`[FlowExecutionTracker] Started tracking flow execution: ${this.executionId}`);
+      this.debugLog(`Started tracking flow execution: ${this.executionId}`);
       
       // Process any pending operations that happened before execution ID was received
       this.processPendingOperations();
@@ -67,12 +84,12 @@ export class FlowExecutionTracker {
    */
   async trackStepCompletion(stepId: string, position: number): Promise<boolean> {
     if (!this.active) {
-      console.warn('[FlowExecutionTracker] Cannot track step completion - tracking not active');
+      this.debugLog('Cannot track step completion - tracking not active');
       return false;
     }
     
     if (this.completed) {
-      console.log('[FlowExecutionTracker] Skipping step completion - flow already completed');
+      this.debugLog('Skipping step completion - flow already completed');
       return true;
     }
     
@@ -81,7 +98,7 @@ export class FlowExecutionTracker {
     
     // If execution hasn't been initialized yet, queue this operation
     if (!this.executionId) {
-      console.log('[FlowExecutionTracker] Queueing step completion for later', { stepId, position });
+      this.debugLog('Queueing step completion for later', { stepId, position });
       return this.queueOperation(() => this.trackStepCompletion(stepId, position));
     }
     
@@ -95,7 +112,7 @@ export class FlowExecutionTracker {
       
       if (!success && this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.warn(`[FlowExecutionTracker] Retry ${this.retryCount}/${this.maxRetries} for step completion`);
+        this.debugLog(`Retry ${this.retryCount}/${this.maxRetries} for step completion`);
         return this.trackStepCompletion(stepId, position);
       }
       
@@ -114,7 +131,7 @@ export class FlowExecutionTracker {
    */
   async trackCompletion(): Promise<boolean> {
     if (!this.active) {
-      console.warn('[FlowExecutionTracker] Cannot track completion - tracking not active');
+      this.debugLog('Cannot track completion - tracking not active');
       return false;
     }
     
@@ -122,7 +139,7 @@ export class FlowExecutionTracker {
     
     // If execution hasn't been initialized yet, queue this operation
     if (!this.executionId) {
-      console.log('[FlowExecutionTracker] Queueing flow completion for later');
+      this.debugLog('Queueing flow completion for later');
       return this.queueOperation(() => this.trackCompletion());
     }
     
@@ -130,11 +147,11 @@ export class FlowExecutionTracker {
       const success = await this.apiClient.completeFlowExecution(this.executionId);
       
       if (success) {
-        console.log(`[FlowExecutionTracker] Tracked successful completion of flow ${this.flowId}`);
+        this.debugLog(`Tracked successful completion of flow ${this.flowId}`);
         this.reset(); // Reset tracker state after successful completion
       } else if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.warn(`[FlowExecutionTracker] Retry ${this.retryCount}/${this.maxRetries} for flow completion`);
+        this.debugLog(`Retry ${this.retryCount}/${this.maxRetries} for flow completion`);
         return this.trackCompletion();
       }
       
@@ -156,7 +173,7 @@ export class FlowExecutionTracker {
     details: string
   ): Promise<boolean> {
     if (!this.active) {
-      console.warn('[FlowExecutionTracker] Cannot track abandonment - tracking not active');
+      this.debugLog('Cannot track abandonment - tracking not active');
       return false;
     }
     
@@ -174,7 +191,7 @@ export class FlowExecutionTracker {
     
     // If execution hasn't been initialized yet, queue this operation
     if (!this.executionId) {
-      console.log('[FlowExecutionTracker] Queueing flow abandonment for later');
+      this.debugLog('Queueing flow abandonment for later');
       return this.queueOperation(() => this.trackAbandonment(reason, details));
     }
     
@@ -188,11 +205,11 @@ export class FlowExecutionTracker {
       );
       
       if (success) {
-        console.log(`[FlowExecutionTracker] Tracked abandonment of flow ${this.flowId}: ${reason}`);
+        this.debugLog(`Tracked abandonment of flow ${this.flowId}: ${reason}`);
         this.reset(); // Reset tracker state after successful abandonment tracking
       } else if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.warn(`[FlowExecutionTracker] Retry ${this.retryCount}/${this.maxRetries} for flow abandonment`);
+        this.debugLog(`Retry ${this.retryCount}/${this.maxRetries} for flow abandonment`);
         return this.trackAbandonment(reason, details);
       }
       

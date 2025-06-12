@@ -7,6 +7,7 @@ export class OnboardingModal {
   private static activeModal: HTMLElement | null = null;
   private static apiClient: ApiClient | null = null;
   private static theme: ThemeOptions = {};
+  private static debugMode: boolean = false;
   private static onFlowSelected: (flowId: string) => void = () => {};
   private static checklists: OnboardingChecklist[] = [];
   private static loadingStyleAdded: boolean = false;
@@ -17,12 +18,23 @@ export class OnboardingModal {
   static init(
     apiClient: ApiClient, 
     onFlowSelected: (flowId: string) => void, 
-    theme: ThemeOptions = {}
+    theme: ThemeOptions = {},
+    debug: boolean = false
   ): void {
     this.apiClient = apiClient;
     this.onFlowSelected = onFlowSelected;
     this.theme = theme;
+    this.debugMode = debug;
     this.addLoadingStyle();
+  }
+
+  /**
+   * Debug logging helper
+   */
+  private static debugLog(...args: any[]): void {
+    if (this.debugMode) {
+      console.log('[OnboardingModal]', ...args);
+    }
   }
 
   /**
@@ -149,7 +161,7 @@ export class OnboardingModal {
           container.appendChild(checklistsContainer);
         }
       } catch (error) {
-        console.error('[OnboardingModal] Failed to load onboarding checklists:', error);
+        this.debugLog('Failed to load onboarding checklists:', error);
         
         // Remove loading indicator
         container.removeChild(loadingIndicatorDiv);
@@ -190,7 +202,7 @@ export class OnboardingModal {
         container.appendChild(retryButton);
       }
     } else {
-      console.error('[OnboardingModal] API client not initialized for inline display');
+      this.debugLog('API client not initialized for inline display');
       
       // Remove loading indicator
       container.removeChild(loadingIndicatorDiv);
@@ -292,20 +304,20 @@ export class OnboardingModal {
     // Fetch and render checklists
     if (this.apiClient) {
       try {
-        console.log('[OnboardingModal] Fetching onboarding checklists...');
+        this.debugLog('Fetching onboarding checklists...');
         this.checklists = await this.apiClient.getOnboardingChecklists();
-        console.log('[OnboardingModal] Checklists fetched:', this.checklists);
+        this.debugLog('Checklists fetched:', this.checklists);
         this.renderChecklists(modalContent);
       } catch (error) {
-        console.error('[OnboardingModal] Failed to load onboarding checklists:', error);
+        this.debugLog('Failed to load onboarding checklists:', error);
         // More detailed error logging
         if (error instanceof Error) {
-          console.error('[OnboardingModal] Error details:', error.message, error.stack);
+          this.debugLog('Error details:', error.message, error.stack);
         }
         this.renderError(modalContent);
       }
     } else {
-      console.error('[OnboardingModal] API client not initialized');
+      this.debugLog('API client not initialized');
       this.renderError(modalContent, 'API client not initialized');
     }
   }

@@ -10,6 +10,7 @@ export class CopilotModal {
     private static onGuideFound: (guideId: string) => void = () => {}; // Callback when guide found
     // private static onViewAllGuides: () => void = () => {}; // No longer needed, handled internally
     private static theme: ThemeOptions = {};
+    private static debugMode: boolean = false; // Add debug mode flag
     private static searchLoadingIndicator: HTMLElement | null = null; // Specific loading indicator
     private static currentView: 'search' | 'list' | 'onboarding' = 'search'; // Track current view
     private static loadingDotsStyleAdded: boolean = false; // Ensure style is added only once
@@ -22,11 +23,22 @@ export class CopilotModal {
     static init(
         apiClient: ApiClient, 
         onGuideFound: (guideId: string) => void,
-        theme: ThemeOptions = {}
+        theme: ThemeOptions = {},
+        debug: boolean = false // Add debug parameter
     ) {
         this.apiClient = apiClient;
         this.onGuideFound = onGuideFound;
         this.theme = theme;
+        this.debugMode = debug; // Set debug mode
+    }
+
+    /**
+     * Debug logging helper
+     */
+    private static debugLog(...args: any[]): void {
+        if (this.debugMode) {
+            console.log('[CopilotModal]', ...args);
+        }
     }
 
     /**
@@ -78,6 +90,11 @@ export class CopilotModal {
     }
 
     static showSearchModal() {
+        // Prevent rapid successive calls
+        if (this.activeModal && document.body.contains(this.activeModal)) {
+            return; // Modal is already open and visible
+        }
+        
         this.closeSearchModal(); // Close existing modal first
         this.currentView = 'search';
         this.addLoadingDotsStyle();
@@ -315,8 +332,22 @@ export class CopilotModal {
             'Onboarding',
             null, // Removed badge
             () => {
+                // Robust container check - re-show modal if containers are not available
                 if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
-                    console.warn('[CopilotModal] Modal containers not available for Onboarding');
+                    this.debugLog('Modal containers not available for Onboarding, re-showing modal');
+                    this.showSearchModal(); // Re-show the modal to recreate containers
+                    // Use setTimeout to ensure the modal is fully rendered before trying again
+                    setTimeout(() => {
+                        if (this.modalMainContentContainer && this.modalHeaderContainer) {
+                            this.currentView = 'onboarding';
+                            this.renderPersistentHeader('', true);
+                            OnboardingModal.renderInExistingModal(this.modalMainContentContainer, () => { 
+                                this.renderSearchView(); 
+                            });
+                                        } else {
+                    this.debugLog('Failed to recreate modal containers for Onboarding');
+                }
+                    }, 100); // Small delay to ensure modal is rendered
                     return;
                 }
                 this.currentView = 'onboarding';
@@ -334,8 +365,28 @@ export class CopilotModal {
             'View All Guides',
             null,
             () => {
+                // Robust container check - re-show modal if containers are not available
                 if (!this.modalMainContentContainer || !this.apiClient || !this.modalHeaderContainer) {
-                    console.warn('[CopilotModal] Modal containers not available for View All Guides');
+                    this.debugLog('Modal containers not available for View All Guides, re-showing modal');
+                    this.showSearchModal(); // Re-show the modal to recreate containers
+                    // Use setTimeout to ensure the modal is fully rendered before trying again
+                    setTimeout(() => {
+                        if (this.modalMainContentContainer && this.modalHeaderContainer && this.apiClient) {
+                            this.currentView = 'list';
+                            this.renderPersistentHeader('All Guides', true);
+                            ViewAllGuidesModal.renderInContainer(
+                                this.modalMainContentContainer, 
+                                this.apiClient, 
+                                (guideId: string) => { 
+                                    this.closeSearchModal(); 
+                                    this.onGuideFound(guideId); 
+                                }, 
+                                () => { this.renderSearchView(); }
+                            );
+                                        } else {
+                    this.debugLog('Failed to recreate modal containers for View All Guides');
+                }
+                    }, 100); // Small delay to ensure modal is rendered
                     return;
                 }
                 this.currentView = 'list';
@@ -426,6 +477,7 @@ export class CopilotModal {
                 this.modalHeaderContainer = null;      // Clear ref
                 this.modalMainContentContainer = null; // Clear ref
                 this.modalFooterContainer = null;      // Clear ref
+                this.debugLog('Modal containers cleared in closeSearchModal timeout');
             }, 300);
         } else if (overlay && document.body.contains(overlay)) {
             document.body.removeChild(overlay);
@@ -434,6 +486,7 @@ export class CopilotModal {
         this.modalHeaderContainer = null;      // Clear ref
         this.modalMainContentContainer = null; // Clear ref
         this.modalFooterContainer = null;      // Clear ref
+        this.debugLog('Modal containers cleared in closeSearchModal immediate');
     }
 
     private static async handleSearch(query: string) {
@@ -449,11 +502,11 @@ export class CopilotModal {
             this.hideSearchLoading(); // Hide indicator after API call
 
             if (match && match.id) {
-                console.log(`Semantic search found match: ${match.name} (${match.id})`);
+                this.debugLog(`Semantic search found match: ${match.name} (${match.id})`);
                 // Display message and "Start Guide" button
                 this.updateResultsMessage(`Found guide: "${match.name || 'Untitled'}"`, 'success', true, match.id);
             } else {
-                console.log('Semantic search found no high-confidence match.');
+                this.debugLog('Semantic search found no high-confidence match.');
                 this.updateResultsMessage(
                     'Sorry, no exact match found. Try rephrasing or view all guides.',
                     'info'
@@ -461,7 +514,7 @@ export class CopilotModal {
             }
         } catch (error) {
             this.hideSearchLoading(); // Ensure indicator is hidden on error
-            console.error('Error during semantic search:', error);
+            this.debugLog('Error during semantic search:', error);
             this.updateResultsMessage('Search failed. Please try again later.', 'error');
         }
     }
@@ -637,7 +690,7 @@ export class CopilotModal {
         logoContainer.style.cssText = `display: flex; align-items: center; justify-content: center; height: 18px; width: 55px; position: relative; transform: translateY(1px); cursor: pointer;`; // Added cursor: pointer
         
         // Footer logo is ALWAYS Hyphenbox logo
-        console.log('[CopilotModal Footer] Using Hyphenbox logo.');
+        this.debugLog('Using Hyphenbox logo.');
         logoContainer.innerHTML = hyphenboxSvg;
         this.styleFallbackSvg(logoContainer.querySelector('svg')); // Use helper to style it
 
@@ -671,7 +724,7 @@ export class CopilotModal {
             svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
             svg.setAttribute('viewBox', '0 0 3163 849');
         } else {
-             console.warn('[Hyphen CopilotModal] Fallback SVG element not found in container.');
+             this.debugLog('Fallback SVG element not found in container.');
         }
     }
 
@@ -712,7 +765,7 @@ export class CopilotModal {
             });
 
         } catch (error) {
-            console.error('[CopilotModal] Failed to load popular guides:', error);
+            this.debugLog('Failed to load popular guides:', error);
             container.innerHTML = '<div style="color: #dc3545; font-size: 13px;">Failed to load guides</div>';
         }
     }

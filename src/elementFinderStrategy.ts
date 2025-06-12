@@ -15,10 +15,19 @@ interface StabilityConfig {
 }
 
 export class ElementFinderStrategy {
+  private static debugMode: boolean = false;
+
+  /**
+   * Set debug mode for ElementFinderStrategy
+   */
+  static setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+  }
 
   private static debugLog(...args: any[]): void {
-    // Basic console log for now, can be tied to a global debug flag later
-    console.log('[ElementFinderStrategy]', ...args);
+    if (this.debugMode) {
+      console.log('[ElementFinderStrategy]', ...args);
+    }
   }
 
   /**

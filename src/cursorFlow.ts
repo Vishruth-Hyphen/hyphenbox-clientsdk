@@ -6,6 +6,7 @@ import { RobustElementFinder } from './robustElementFinder';
 import { SelectiveDomAnalyzer } from './selectiveDomAnalyzer';
 import { ElementFinderStrategy, PageContextHint } from './elementFinderStrategy';
 import { FlowExecutionTracker } from './flowExecutionTracker';
+import { PageLoadDetector } from './pageLoadDetector';
 import { CopilotModal } from './copilotModal';
 
 const API_URL = 'https://hyphenbox-backend.onrender.com';
@@ -79,6 +80,14 @@ export default class CursorFlow {
       
       this.executionTracker = new FlowExecutionTracker(this.apiClient);
       this.operationToken = this.generateToken();
+      
+      // Set debug mode for all related classes
+      const debugMode = this.options.debug || false;
+      FlowExecutionTracker.setDebugMode(debugMode);
+      RobustElementFinder.setDebugMode(debugMode);
+      PageLoadDetector.setDebugMode(debugMode);
+      ElementFinderStrategy.setDebugMode(debugMode);
+      ApiClient.setDebugMode(debugMode);
     }
     
     private setIsPlaying(value: boolean, immediateSave = false): void {
@@ -578,13 +587,8 @@ export default class CursorFlow {
               if (firstStepCandidates.length > 0) {
                 this.debugLog('SUCCESS: Found target element for first step on current page! Starting guide here.');
                 // Element found on current page - we can start the guide here!
-                // Hide thinking indicator before starting
-                if (this.thinkingIndicator) {
-                  CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-                  this.thinkingIndicator = null;
-                }
+                // Do NOT hide thinking indicator here - let playCurrentStep handle it after showing visual elements
                 this.isLoadingGuide = false;
-                this.hideThinking();
                 // Start the guide normally - element exists here
                 await this.startGuide(guideId, token);
                 return;
@@ -636,13 +640,8 @@ export default class CursorFlow {
         }
         
         // If URL check passed or wasn't needed, start the actual guide
-        // Hide thinking indicator just before starting the guide visuals
-        if (this.thinkingIndicator) {
-           CursorFlowUI.hideThinkingIndicator(this.thinkingIndicator);
-           this.thinkingIndicator = null;
-        }
+        // Do NOT hide thinking indicator here - let playCurrentStep handle it after finding the element
         this.isLoadingGuide = false;
-        this.hideThinking();
         
         // Start the actual guide
         await this.startGuide(guideId, token);
@@ -718,6 +717,7 @@ export default class CursorFlow {
                                      // The thinking indicator shown by startGuideById should persist
                                      // until playCurrentStep hides it after finding the first element.
         this.setIsPlaying(true);
+        this.showThinking(); // Ensure thinking indicator persists even after isLoadingGuide becomes false
         this.state.currentStep = 0;
         this.state.recordingId = guideId;
         this.state.completedSteps = [];
@@ -1194,7 +1194,8 @@ export default class CursorFlow {
           }
         } finally {
           this.isHandlingNavigation = false;
-          this.hideThinking(); // Ensure thinking is hidden in finally block
+          // Remove unconditional hideThinking() as it interferes with the thinking indicator flow
+          // playCurrentStep or error handling will manage thinking indicator appropriately
         }
       }, 50);
     }
@@ -1909,22 +1910,10 @@ export default class CursorFlow {
         return;
       }
 
-      // If isLoadingGuide is true, it means we are in the initial phase of loading a guide.
-      // In this case, we should show the thinking indicator.
-      if (this.isLoadingGuide) {
-        if (!this.thinkingIndicator || !document.body.contains(this.thinkingIndicator)) {
-          this.debugLog('[ThinkingIndicator] Showing (forced by isLoadingGuide).');
-          const anchorButton = this.startButton && document.body.contains(this.startButton) ? this.startButton : null;
-          this.thinkingIndicator = CursorFlowUI.showThinkingIndicator(anchorButton, this.options.theme || {});
-        }
-        return; // Exit after handling isLoadingGuide case
-      }
-
-      // If not explicitly loading a guide (isLoadingGuide is false),
-      // then show thinking indicator only if no other primary step UI is visible.
-      // Primary step UI includes cursor, highlight, guidance card, or text popup.
-      const isStepUIVisible = this.cursorElement || // Active cursor for a step
-                             this.highlightElement || // Active highlight for a step
+      // Check if any primary step UI is currently visible
+      // Primary step UI includes cursor, highlight, guidance card, or text popup
+      const isStepUIVisible = (this.cursorElement && this.cursorElement.style.display !== 'none') || // Active cursor for a step
+                             (this.highlightElement && this.highlightElement.style.display !== 'none') || // Active highlight for a step
                              (this.guidanceCardElement && document.body.contains(this.guidanceCardElement)) || // Guidance card for highlight/nav step
                              document.getElementById('hyphenbox-text-popup'); // Text popup with instructions
 
@@ -1936,14 +1925,13 @@ export default class CursorFlow {
         return;
       }
 
-      // If we reach here, it means:
-      // 1. state.isPlaying is true.
-      // 2. isLoadingGuide is false.
-      // 3. No primary step UI is visible.
-      // This is the state where we are "between steps" or waiting for something minor.
+      // Show thinking indicator if:
+      // 1. We're actively playing a guide AND
+      // 2. No step UI is currently visible (we're loading/processing)
       if (!this.thinkingIndicator || !document.body.contains(this.thinkingIndicator)) {
-        this.debugLog('[ThinkingIndicator] Showing (between steps/idle within active guide).');
-        const anchorButton = this.startButton && document.body.contains(this.startButton) ? this.startButton : null;
+        this.debugLog('[ThinkingIndicator] Showing (guide is active but no step UI visible).');
+        const anchorButton = this.copilotButton && document.body.contains(this.copilotButton) ? this.copilotButton :
+                           this.startButton && document.body.contains(this.startButton) ? this.startButton : null;
         this.thinkingIndicator = CursorFlowUI.showThinkingIndicator(anchorButton, this.options.theme || {});
       }
     }

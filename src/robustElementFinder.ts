@@ -9,8 +9,9 @@ export class RobustElementFinder {
 
     static setDebugMode(enabled: boolean): void {
         this.debugMode = enabled;
-        if (this.debugMode) {
-            console.log(`[RobustElementFinder] Debug mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        // Only log debug mode changes when explicitly enabling debugging
+        if (enabled && this.debugMode) {
+            console.log(`[RobustElementFinder] Debug mode ENABLED`);
         }
     }
 
@@ -533,7 +534,9 @@ export class RobustElementFinder {
                 const currentElements = document.querySelectorAll(stabilitySelectors); 
                 const currentStructureSignature = getStructureSignature(currentElements); 
                 if (shouldLogStability) { 
-                    console.log(`[RobustElementFinder-Stability] Check #${attempts}: Found ${currentElements.length} elements.`); 
+                    if (this.debugMode) {
+                console.log(`[RobustElementFinder-Stability] Check #${attempts}: Found ${currentElements.length} elements.`);
+            } 
                 } 
                 if (currentElements.length === lastElementCount && currentStructureSignature === lastStructureSignature) { 
                     stableCount++; 
@@ -583,13 +586,17 @@ export class RobustElementFinder {
                 );
                 
                 if (isInViewport) {
-                    console.log(`[RobustFinder] Element already in viewport:`, element.tagName, element.id);
+                    if (this.debugMode) {
+            console.log(`[RobustFinder] Element already in viewport:`, element.tagName, element.id);
+        }
                     visibleCandidates.push(element);
                     continue;
                 }
                 
                 // Element not in viewport, try to scroll it into view
+                if (this.debugMode) {
                 console.log(`[RobustFinder] Element not in viewport, attempting to scroll:`, element.tagName, element.id);
+            }
                 
                 // Check if element is in a scrollable container (like a modal)
                 const scrollableContainer = this.findScrollableParent(element);
@@ -601,7 +608,9 @@ export class RobustElementFinder {
                     
                     // If element is in a scrollable container, scroll that container
                     if (scrollableContainer && scrollableContainer !== document.body && scrollableContainer !== document.documentElement) {
-                        console.log(`[RobustFinder] Scrolling container:`, scrollableContainer.tagName, scrollableContainer.id);
+                        if (this.debugMode) {
+                    console.log(`[RobustFinder] Scrolling container:`, scrollableContainer.tagName, scrollableContainer.id);
+                }
                         
                         // Calculate position to scroll to
                         const containerRect = scrollableContainer.getBoundingClientRect();
@@ -628,7 +637,9 @@ export class RobustElementFinder {
                     );
                     
                     if (isNowInViewport) {
+                        if (this.debugMode) {
                         console.log(`[RobustFinder] Successfully scrolled element into viewport with behavior:`, scrollBehavior.behavior);
+                    }
                         visibleCandidates.push(element);
                         scrollSucceeded = true;
                         break;
@@ -643,7 +654,9 @@ export class RobustElementFinder {
                     );
                     
                     if (isPartiallyVisible) {
+                        if (this.debugMode) {
                         console.log(`[RobustFinder] Element partially visible after scrolling with behavior:`, scrollBehavior.behavior);
+                    }
                         visibleCandidates.push(element);
                         scrollSucceeded = true;
                         break;
@@ -651,7 +664,9 @@ export class RobustElementFinder {
                 }
                 
                 if (!scrollSucceeded) {
-                    console.log(`[RobustFinder] Element still not visible after all scroll attempts:`, element.tagName, element.id);
+                    if (this.debugMode) {
+                console.log(`[RobustFinder] Element still not visible after all scroll attempts:`, element.tagName, element.id);
+            }
                 }
             } catch (e) {
                 console.warn(`[RobustFinder] Error checking/scrolling element:`, e);
@@ -692,7 +707,9 @@ export class RobustElementFinder {
     // --- ADDED FROM ElementUtils ---
     static compareUrls(url1: string, url2: string): boolean {
       if (!url1 || !url2) {
-        console.log('URL COMPARE: One or both URLs are empty', { url1, url2 });
+        if (this.debugMode) {
+            console.log('URL COMPARE: One or both URLs are empty', { url1, url2 });
+        }
         return false;
       }
       
@@ -728,10 +745,12 @@ export class RobustElementFinder {
         const parsedUrl2 = parseUrl(url2);
         
         // Debug log
-        console.log('URL COMPARE DETAILS:', {
-          url1: { original: url1, parsed: parsedUrl1 },
-          url2: { original: url2, parsed: parsedUrl2 }
-        });
+        if (this.debugMode) {
+            console.log('URL COMPARE DETAILS:', {
+                url1: { original: url1, parsed: parsedUrl1 },
+                url2: { original: url2, parsed: parsedUrl2 }
+            });
+        }
         
         // Special case: If either URL is localhost, only compare paths
         const isLocalhost1 = parsedUrl1.hostname.includes('localhost') || parsedUrl1.hostname.includes('127.0.0.1');
@@ -741,11 +760,13 @@ export class RobustElementFinder {
         if (isLocalhost1 || isLocalhost2) {
           // When using localhost, paths must still match exactly
           const pathsMatch = parsedUrl1.pathname === parsedUrl2.pathname;
-          console.log('URL COMPARE RESULT (localhost mode):', { 
-            pathsMatch,
-            path1: parsedUrl1.pathname, 
-            path2: parsedUrl2.pathname 
-          });
+          if (this.debugMode) {
+              console.log('URL COMPARE RESULT (localhost mode):', { 
+                pathsMatch,
+                path1: parsedUrl1.pathname, 
+                path2: parsedUrl2.pathname 
+              });
+          }
           return pathsMatch;
         }
         
@@ -754,15 +775,17 @@ export class RobustElementFinder {
         const pathMatch = parsedUrl1.pathname === parsedUrl2.pathname;
         const result = hostnameMatch && pathMatch;
         
-        console.log('URL COMPARE RESULT (standard mode):', { 
-          result, 
-          hostnameMatch, 
-          pathMatch,
-          hostname1: parsedUrl1.hostname,
-          hostname2: parsedUrl2.hostname,
-          path1: parsedUrl1.pathname, 
-          path2: parsedUrl2.pathname 
-        });
+        if (this.debugMode) {
+            console.log('URL COMPARE RESULT (standard mode):', { 
+              result, 
+              hostnameMatch, 
+              pathMatch,
+              hostname1: parsedUrl1.hostname,
+              hostname2: parsedUrl2.hostname,
+              path1: parsedUrl1.pathname, 
+              path2: parsedUrl2.pathname 
+            });
+        }
         
         return result;
       } catch (error) {
@@ -770,7 +793,9 @@ export class RobustElementFinder {
         
         // Fallback to simple string comparison if URL parsing fails
         const fallbackResult = url1.toLowerCase() === url2.toLowerCase();
-        console.log('URL COMPARE FALLBACK RESULT:', fallbackResult);
+        if (this.debugMode) {
+            console.log('URL COMPARE FALLBACK RESULT:', fallbackResult);
+        }
         return fallbackResult;
       }
     }

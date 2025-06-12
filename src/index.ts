@@ -48,6 +48,8 @@ export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
   }
 
   const useDefaultLauncher = options.useDefaultLauncher !== undefined ? options.useDefaultLauncher : true;
+  // Set debug default to false if not explicitly provided
+  const debugMode = options.debug !== undefined ? options.debug : false;
 
   const apiClientInstance = new ApiClient(
     API_URL,
@@ -56,7 +58,8 @@ export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
   );
 
   const cursorFlowOptions: CursorFlowOptions = {
-    ...options, // Pass all original options (apiKey, userId, theme, debug, buttonText for default launcher)
+    ...options, 
+    debug: debugMode, // Ensure debug is explicitly set
     apiClient: apiClientInstance,
   };
 
@@ -69,19 +72,19 @@ export function initialize(options: HyphenboxInitializeOptions): HyphenboxSDK {
     (cursorFlow as any).startGuideById(guideId); 
   };
 
-  // Initialize modals so their static methods are ready
-  // MainLauncherModal.init(...) // Removed
-  
+  // Initialize modals so their static methods are ready - pass debug mode
   CopilotModal.init(
     apiClientInstance,
     internalStartGuide,
-    options.theme || {}
+    options.theme || {},
+    debugMode // Pass debug mode to modal
   );
 
   OnboardingModal.init(
     apiClientInstance,
     internalStartGuide,
-    options.theme || {}
+    options.theme || {},
+    debugMode // Pass debug mode to modal
   );
 
   const sdk: HyphenboxSDK = {

@@ -5,10 +5,27 @@ export class ApiClient {
   private client: AxiosInstance;
   private apiKey: string;
   private userId: string;
+  private static debugMode: boolean = false;
   
   // Simple cache for onboarding checklists
   private checklistsCache: { data: any[], timestamp: number } | null = null;
   private readonly CACHE_DURATION = 30000; // 30 seconds
+
+  /**
+   * Set debug mode for ApiClient
+   */
+  static setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+  }
+
+  /**
+   * Debug logging helper
+   */
+  private static debugLog(...args: any[]): void {
+    if (this.debugMode) {
+      console.log('[API Client]', ...args);
+    }
+  }
   
   constructor(baseUrl: string, apiKey: string, userId: string) {
     this.baseUrl = baseUrl;
@@ -119,14 +136,14 @@ export class ApiClient {
    */
   async semanticSearch(query: string): Promise<{ id: string, name: string } | null> {
     try {
-      console.log(`[API Client] Performing semantic search for query: "${query}"`);
+      ApiClient.debugLog(`Performing semantic search for query: "${query}"`);
       const response = await this.client.post('/api/sdk/flows/semantic-search', {
         query: query,
         external_user_id: this.userId
       });
 
       // The endpoint returns { match: { id, name } | null }
-      console.log('[API Client] Semantic search response:', response.data);
+      ApiClient.debugLog('Semantic search response:', response.data);
       return response.data.match; 
     } catch (error) {
       console.error('Failed semantic search:', error);
@@ -152,19 +169,19 @@ export class ApiClient {
     button_text: string | null
   } | null> {
     try {
-      console.log(`[API Client] Fetching theme for current organization (via API Key)`);
+      ApiClient.debugLog(`Fetching theme for current organization (via API Key)`);
       const response = await this.client.get(`/api/sdk/theme`, {
         params: { external_user_id: this.userId }
       });
       
       // The endpoint returns { theme: { ... } } or an error
-      console.log('[API Client] Organization theme response:', response.data);
+      ApiClient.debugLog('Organization theme response:', response.data);
       return response.data.theme;
     } catch (error) {
       console.error('Failed to fetch organization theme:', error);
       // Check for 404 explicitly
       if (axios.isAxiosError(error) && error.response?.status === 404) {
-        console.warn(`[API Client] Theme not found for organization.`);
+        ApiClient.debugLog(`Theme not found for organization.`);
       } else {
         // Log other errors
         console.error('Error fetching theme details:', error);
@@ -182,14 +199,14 @@ export class ApiClient {
     // Check cache first
     const now = Date.now();
     if (this.checklistsCache && (now - this.checklistsCache.timestamp) < this.CACHE_DURATION) {
-      console.log('[API Client] Using cached onboarding checklists');
+      ApiClient.debugLog('Using cached onboarding checklists');
       return this.checklistsCache.data;
     }
 
     try {
-      console.log('[API Client] Fetching onboarding checklists from server');
+      ApiClient.debugLog('Fetching onboarding checklists from server');
       const response = await this.client.get('/api/sdk/onboarding-checklists');
-      console.log('[API Client] Onboarding checklists response:', response.data);
+      ApiClient.debugLog('Onboarding checklists response:', response.data);
       
       // Cache the result
       this.checklistsCache = {
@@ -226,7 +243,7 @@ export class ApiClient {
    */
   async startFlowExecution(flowId: string, sessionDetails?: any): Promise<string | null> {
     try {
-      console.log(`[API Client] Starting flow execution for flow: ${flowId}`);
+      ApiClient.debugLog(`Starting flow execution for flow: ${flowId}`);
       const response = await this.client.post('/api/sdk/flow-executions', {
         flow_id: flowId,
         session_details: sessionDetails || null
@@ -254,7 +271,7 @@ export class ApiClient {
     failureReasonDetails?: string
   ): Promise<boolean> {
     try {
-      console.log(`[API Client] Updating flow execution progress: ${executionId}`);
+      ApiClient.debugLog(`Updating flow execution progress: ${executionId}`);
       const payload: any = {
         last_successful_step_id: lastSuccessfulStepId,
         last_successful_step_position: lastSuccessfulStepPosition
@@ -282,13 +299,13 @@ export class ApiClient {
    */
   async completeFlowExecution(executionId: string): Promise<boolean> {
     try {
-      console.log(`[API Client] Completing flow execution: ${executionId}`);
+      ApiClient.debugLog(`Completing flow execution: ${executionId}`);
       const response = await this.client.put(`/api/sdk/flow-executions/${executionId}/complete`, {});
       
       if (response.data.success) {
         // Clear onboarding cache to ensure fresh completion status on next load
         this.clearOnboardingCache();
-        console.log(`[API Client] Flow execution completed and cache cleared: ${executionId}`);
+        ApiClient.debugLog(`Flow execution completed and cache cleared: ${executionId}`);
       }
       
       return response.data.success;
@@ -314,7 +331,7 @@ export class ApiClient {
     lastSuccessfulStepPosition?: number
   ): Promise<boolean> {
     try {
-      console.log(`[API Client] Abandoning flow execution: ${executionId}`);
+      ApiClient.debugLog(`Abandoning flow execution: ${executionId}`);
       const payload: any = {
         reason_code: reasonCode,
         details: details
@@ -338,7 +355,7 @@ export class ApiClient {
    * Call this after flow completion to ensure fresh data is fetched
    */
   clearOnboardingCache(): void {
-    console.log('[API Client] Clearing onboarding checklists cache');
+    ApiClient.debugLog('Clearing onboarding checklists cache');
     this.checklistsCache = null;
   }
 }

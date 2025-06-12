@@ -1,4 +1,21 @@
 export class PageLoadDetector {
+  private static debugMode: boolean = false;
+
+  /**
+   * Set debug mode for PageLoadDetector
+   */
+  static setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+  }
+
+  /**
+   * Debug logging helper
+   */
+  private static debugLog(...args: any[]): void {
+    if (this.debugMode) {
+      console.log('[PageLoadDetector]', ...args);
+    }
+  }
   
   /**
    * Check if the page is still loading or has dynamic content being rendered
@@ -60,7 +77,7 @@ export class PageLoadDetector {
     const images = document.querySelectorAll('img');
     for (const img of images) {
       if (!img.complete) {
-        console.log('[PageLoadDetector] Found incomplete image:', img.src);
+        this.debugLog('Found incomplete image:', img.src);
         return true;
       }
     }
@@ -70,7 +87,7 @@ export class PageLoadDetector {
     for (const iframe of iframes) {
       try {
         if (iframe.contentDocument?.readyState !== 'complete') {
-          console.log('[PageLoadDetector] Found incomplete iframe');
+          this.debugLog('Found incomplete iframe');
           return true;
         }
       } catch (e) {
@@ -111,7 +128,7 @@ export class PageLoadDetector {
         observer.disconnect();
         
         const elapsed = Date.now() - startTime;
-        console.log(`[PageLoadDetector] DOM stability check: ${mutationCount} total mutations, ${significantMutations} significant mutations in ${elapsed}ms`);
+        this.debugLog(`DOM stability check: ${mutationCount} total mutations, ${significantMutations} significant mutations in ${elapsed}ms`);
         
         // Consider stable if less than 5 significant mutations in the check period
         if (significantMutations < 5) {
@@ -216,15 +233,15 @@ export class PageLoadDetector {
       const stability = await this.isPageStable();
       
       if (stability.isStable) {
-        console.log('[PageLoadDetector] ✅ Page is stable:', stability.reason);
+        this.debugLog('✅ Page is stable:', stability.reason);
         return true;
       }
       
-      console.log('[PageLoadDetector] ⏳ Page not stable, waiting...', stability.reason);
+      this.debugLog('⏳ Page not stable, waiting...', stability.reason);
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next check
     }
     
-    console.log('[PageLoadDetector] ⚠️ Timeout reached, proceeding anyway');
+    this.debugLog('⚠️ Timeout reached, proceeding anyway');
     return false;
   }
   

@@ -547,6 +547,9 @@ export class CursorFlowUI {
 
     card._hyphenAnchorElement = highlightElement;
 
+    // Track last position to prevent unnecessary updates
+    let lastComputedPosition: string = '';
+
     const updateCardPositionLogic = () => {
         if (!document.body.contains(card)) { // Card might have been removed
             // Ensure cleanup if card is no longer in DOM
@@ -585,25 +588,32 @@ export class CursorFlowUI {
             }
         }
 
-        const currentCardPosition = card.style.position;
-        const currentCardTop = card.style.top;
-        const currentCardLeft = card.style.left;
-        const currentCardBottom = card.style.bottom;
-        const currentCardTransform = card.style.transform;
+        // Create a position signature to detect actual changes
+        const newPositionSignature = bestPosition 
+            ? `${bestPosition.positionType}-${Math.round(bestPosition.top)}-${Math.round(bestPosition.left)}`
+            : 'fixed-bottom-center';
 
+        // Only update if position actually changed
+        if (lastComputedPosition === newPositionSignature) {
+            return; // Skip update if position hasn't meaningfully changed
+        }
+
+        lastComputedPosition = newPositionSignature;
         let positionChanged = false;
 
         if (bestPosition) {
-            if (card.style.position !== bestPosition.positionType || card.style.top !== `${bestPosition.top}px` || card.style.left !== `${bestPosition.left}px`) {
+            const newTop = `${bestPosition.top}px`;
+            const newLeft = `${bestPosition.left}px`;
+            
+            if (card.style.position !== bestPosition.positionType || card.style.top !== newTop || card.style.left !== newLeft) {
                 card.style.position = bestPosition.positionType;
-                card.style.top = `${bestPosition.top}px`;
-                card.style.left = `${bestPosition.left}px`;
+                card.style.top = newTop;
+                card.style.left = newLeft;
                 card.style.bottom = 'auto';
                 card.style.right = 'auto';
                 card.style.transform = bestPosition.transform || 'none';
                 positionChanged = true;
             }
-             if (card.style.opacity !== '1') card.style.opacity = '1'; // Ensure visible
         } else {
             // Fallback: screen bottom-center
             const fallbackPosition = { pos: 'fixed' as 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)' };
@@ -616,25 +626,30 @@ export class CursorFlowUI {
                 card.style.transform = fallbackPosition.transform;
                 positionChanged = true;
             }
-             if (card.style.opacity !== '1') card.style.opacity = '1'; // Ensure visible
         }
         
-        // Trigger animation only if it's the first time or position actually changed
-        if (positionChanged && !card.getAnimations().some(anim => anim.playState === 'running')) { // Animate if position changed and no animation is running
-             const targetTransform = bestPosition ? (bestPosition.transform || 'none') : 'translateX(-50%)';
-             const initialYOffset = bestPosition ? '10px' : '20px'; // Different offset for absolute vs fixed
-             const finalYOffset = '0px';
+        // Ensure visibility but avoid unnecessary opacity changes
+        if (card.style.opacity !== '1') {
+            card.style.opacity = '1'; 
+        }
+        
+        // Only animate on first appearance or significant position changes
+        if (positionChanged && !card.dataset.positioned) {
+            card.dataset.positioned = 'true'; // Mark as positioned to prevent re-animation
+            
+            const targetTransform = bestPosition ? (bestPosition.transform || 'none') : 'translateX(-50%)';
+            const initialYOffset = bestPosition ? '10px' : '20px'; 
+            const finalYOffset = '0px';
 
             let initialTransform = targetTransform;
             if (targetTransform === 'none' || targetTransform === '') {
                 initialTransform = `translateY(${initialYOffset})`;
             } else {
-                 // Combine existing transform with translateY
-                 if(targetTransform.includes('translateX')) {
+                if(targetTransform.includes('translateX')) {
                     initialTransform = `${targetTransform} translateY(${initialYOffset})`;
-                 } else {
+                } else {
                     initialTransform = `translateY(${initialYOffset})`;
-                 }
+                }
             }
             
             card.animate([
@@ -643,52 +658,74 @@ export class CursorFlowUI {
             ], {
                 duration: 300,
                 easing: 'ease-out',
-                fill: 'forwards' // Keep final state
+                fill: 'forwards'
             });
-        } else if (card.style.opacity !== '1') {
-            card.style.opacity = '1'; // Ensure visible if no animation
         }
-
     };
 
     // Initial position update
     updateCardPositionLogic();
 
-    // --- Setup dynamic tracking ---
+    // --- Setup less aggressive dynamic tracking ---
     const scrollResizeHandler = () => {
         if (card._rAfId) cancelAnimationFrame(card._rAfId);
         card._rAfId = requestAnimationFrame(() => {
-            if (document.body.contains(card)) { // Only update if card is still in DOM
+            if (document.body.contains(card)) {
                 updateCardPositionLogic();
             }
         });
     };
     card._scrollResizeHandler = scrollResizeHandler;
 
+    // Use passive listeners for better performance
     window.addEventListener('scroll', scrollResizeHandler, { passive: true });
     window.addEventListener('resize', scrollResizeHandler, { passive: true });
     window.addEventListener('orientationchange', scrollResizeHandler);
 
+    // Much more specific and less aggressive mutation observer
     const observerCallback: MutationCallback = (mutationsList) => {
-        if (card._mutationDebounceTimeout) clearTimeout(card._mutationDebounceTimeout);
-        card._mutationDebounceTimeout = window.setTimeout(() => {
-            if (document.body.contains(card)) { // Only update if card is still in DOM
-                 updateCardPositionLogic();
+        let shouldUpdate = false;
+        
+        // Only update for changes that actually affect positioning
+        for (const mutation of mutationsList) {
+            if (mutation.type === 'attributes') {
+                const attributeName = mutation.attributeName;
+                // Only care about attributes that affect layout/positioning
+                if (attributeName === 'style' || attributeName === 'class') {
+                    shouldUpdate = true;
+                    break;
+                }
+            } else if (mutation.type === 'childList') {
+                // Only care about significant DOM structure changes
+                if (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0) {
+                    shouldUpdate = true;
+                    break;
+                }
             }
-        }, 50); // Debounce mutations slightly
+        }
+        
+        if (shouldUpdate) {
+            if (card._mutationDebounceTimeout) clearTimeout(card._mutationDebounceTimeout);
+            card._mutationDebounceTimeout = window.setTimeout(() => {
+                if (document.body.contains(card)) {
+                    updateCardPositionLogic();
+                }
+            }, 100); // Increased debounce for stability
+        }
     };
+    
     card._observer = new MutationObserver(observerCallback);
 
-    const observerConfig = { attributes: true, childList: true, subtree: true, characterData: true };
+    // Much more conservative observation - only watch for layout-affecting changes
     if (card._hyphenAnchorElement && document.body.contains(card._hyphenAnchorElement)) {
-        card._observer.observe(card._hyphenAnchorElement, observerConfig);
-        if (card._hyphenAnchorElement.parentElement) {
-            card._observer.observe(card._hyphenAnchorElement.parentElement, { childList: true, subtree: false });
-        }
+        // Only observe specific attributes that affect layout, not all attributes
+        card._observer.observe(card._hyphenAnchorElement, { 
+            attributes: true, 
+            attributeFilter: ['style', 'class'], // Only watch style and class changes
+            childList: false, // Don't watch child changes unless necessary
+            subtree: false    // Don't watch deep tree changes
+        });
     }
-    // Observe body for major layout shifts, but be cautious with subtree true on body.
-    // Only observe direct children of body for additions/removals.
-    card._observer.observe(document.body, { childList: true, subtree: false });
   }
 
   static moveCursorToElement(element: HTMLElement, cursor: HTMLElement | null, interaction: any): void {
